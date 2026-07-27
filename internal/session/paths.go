@@ -50,6 +50,14 @@ func PIDPath(name string) string {
 	return filepath.Join(Dir(name), "rook.pid")
 }
 
+// LayoutPath returns the file a session's workspace/tab/pane tree is saved
+// to. It lives in the session directory but outlives the daemon: Cleanup
+// removes sockets and the pidfile, not this, which is the whole point — the
+// layout has to survive the restart that `just install` forces on you.
+func LayoutPath(name string) string {
+	return filepath.Join(Dir(name), "layout.json")
+}
+
 // LogPath returns the daemon log file path for a session.
 func LogPath(name string) string {
 	return filepath.Join(Dir(name), "rook.log")

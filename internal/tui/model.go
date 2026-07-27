@@ -53,6 +53,19 @@ type model struct {
 	sidebarHidden bool
 	mouseOn       bool
 
+	// copyMode routes keys to the scroll/copy bindings instead of at the
+	// program in the pane. The daemon owns the viewport itself and reports it
+	// back in every state message; this flag is also set optimistically when
+	// the key is pressed, so the mode does not appear to lag a round trip.
+	copyMode  bool
+	selecting bool
+
+	// The goto picker: a fuzzy filter over every workspace, tab and agent.
+	pickerOpen  bool
+	pickerQuery string
+	pickerIndex int
+	pickerItems []pickerItem
+
 	// The manager bar's own state. managerReply is the last thing it said and
 	// stays on screen until it says something else; managerBusy runs the
 	// spinner between asking and being answered.
@@ -191,10 +204,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case m.helpMode:
 		m.helpMode = false
 		return m, nil
+	case m.pickerOpen:
+		return m.handlePickerKey(msg, key)
 	case m.promptMode:
 		return m.handlePromptKey(msg, key)
 	case m.navMode:
 		return m.handleNavKey(key)
+	case m.copyMode && key != m.keys.Prefix:
+		return m.handleCopyKey(msg, key)
 	case m.prefixMode:
 		m.prefixMode = false
 		m.statusMsg = ""
@@ -274,6 +291,10 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.act(attachproto.ActionPrevWS, "", "")
 	case config.ActionCloseWorkspce:
 		m.act(attachproto.ActionCloseWS, m.state.ActiveWorkspace, "")
+	case config.ActionCopyMode:
+		m.enterCopyMode()
+	case config.ActionGoto:
+		m.openPicker()
 	case config.ActionToggleSidebar:
 		m.sidebarHidden = !m.sidebarHidden
 		m.sendResize()
@@ -533,7 +554,12 @@ func (m *model) handleServerMsg(msg attachproto.ServerMsg) (tea.Model, tea.Cmd) 
 			Tabs: msg.Tabs, ActiveTab: msg.ActiveTab,
 			Panes: msg.Panes, Agents: msg.Agents, Dividers: msg.Dividers,
 			Focus: msg.Focus, Zoomed: msg.Zoomed,
+			Copy: msg.Copy, Selecting: msg.Selecting,
 		}
+		// The daemon owns the viewport, so its view of copy mode is the
+		// authoritative one — including when the mode was entered by a wheel
+		// rather than by a keypress.
+		m.copyMode, m.selecting = msg.Copy, msg.Selecting
 	case attachproto.TypeFrame:
 		m.frame = attachproto.Frame{
 			Type: msg.Type, PaneID: msg.PaneID, Cols: msg.Cols, Rows: msg.Rows,
@@ -541,6 +567,10 @@ func (m *model) handleServerMsg(msg attachproto.ServerMsg) (tea.Model, tea.Cmd) 
 		}
 	case attachproto.TypeManagerReply:
 		m.managerReply, m.managerBusy = msg.Text, false
+
+	case attachproto.TypeCopy:
+		m.statusMsg = copiedMsg(msg.Text)
+		return m, copyToClipboard(msg.Text)
 
 	case attachproto.TypeNotify:
 		// The daemon already played any system sound; the bell has to come
@@ -618,6 +648,9 @@ func (m *model) View() string {
 	if m.helpMode {
 		lines = m.overlay(lines, m.renderHelp(m.width), m.width, m.height)
 	}
+	if m.pickerOpen {
+		lines = m.overlay(lines, m.renderPicker(m.width), m.width, m.height)
+	}
 
 	return strings.Join(lines, "\n")
 }
@@ -630,6 +663,9 @@ func (m *model) renderStatus() string {
 	}
 	if m.statusMsg != "" {
 		return m.p.help.Render(m.statusMsg)
+	}
+	if m.copyMode {
+		return m.p.help.Render(m.copyHint())
 	}
 	return ""
 }

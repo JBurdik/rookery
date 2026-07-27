@@ -215,6 +215,21 @@ func (g *Grid) Scrollback(maxLines int, _ bool) (text string, truncated bool) {
 	return strings.Join(lines[start:], "\n"), truncated
 }
 
+// ScrollbackLines returns the transcript as lines, oldest first, including
+// the current partial line. This is what the scroll/copy viewport draws:
+// plain text, because that is all the transcript ever was.
+func (g *Grid) ScrollbackLines() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	out := make([]string, len(g.scroll), len(g.scroll)+1)
+	copy(out, g.scroll)
+	if g.pending.Len() > 0 {
+		out = append(out, g.pending.String())
+	}
+	return out
+}
+
 // Size returns the current grid dimensions.
 func (g *Grid) Size() (cols, rows int) {
 	g.mu.Lock()

@@ -422,9 +422,10 @@ seen. That is what makes "which of my agents wants me?" answerable at a glance.
 
 Mouse capture is on by default, the way Herdr ships it. Click a pane to focus
 it, a tab or workspace to switch, an agent in the sidebar to jump straight to
-it wherever it lives. Drag a divider to resize. Scroll to page through
-history. Right-click a tab to rename it — the same prompt `prefix T` opens, on
-the tab you clicked rather than the active one.
+it wherever it lives. Drag a divider to resize. Scroll to move back through the
+pane's own history (see [Scroll and copy](#scroll-and-copy)). Right-click a tab
+to rename it — the same prompt `prefix T` opens, on the tab you clicked rather
+than the active one.
 
 Panes whose program asked for mouse reporting — Claude Code, vim, anything
 full-screen — get the events forwarded SGR-encoded in pane-local coordinates
@@ -436,6 +437,44 @@ While capture is on, your terminal's native text selection needs **shift+drag**
 ```json
 { "ui": { "mouse_capture": false } }
 ```
+
+## Scroll and copy
+
+`prefix [` (or the wheel over a pane that hasn't claimed the mouse) scrolls
+back through what that pane printed. The pane's header says how far back you
+are, because a screen that has stopped updating otherwise looks like a hung
+program.
+
+| Key | |
+| --- | --- |
+| `j` `k` / arrows | move a line |
+| `ctrl+d` `ctrl+u`, `f` `b`, page up/down | move a page |
+| `g` / `G` | first / last line |
+| `v` or space | start a selection |
+| `y` or enter | copy — the cursor's line, or the selection |
+| `esc` `q` | back to the live screen |
+
+Anything else leaves scroll mode and goes to the program in the pane, so
+wheeling back and then typing does what you meant rather than swallowing the
+keystroke. Scrolling down past the last line also returns you to live.
+
+Copying goes through **OSC 52**, so it reaches your real clipboard even when
+the multiplexer is at the far end of an SSH connection — no clipboard daemon,
+no X forwarding.
+
+Two deliberate limits: the history is the plain-text transcript the daemon
+already keeps (2000 lines, no colour, long lines cut at the pane's width — the
+copied text is the full line), and selection is by whole lines. Cell-accurate
+scrollback would mean an emulator that keeps styled history, which is a
+different program; `rook pane read --scrollback` is the same data for agents.
+
+## Go to
+
+`prefix f` (or `/`) opens a fuzzy list of everything you can jump to: every
+agent in every workspace, then the workspaces, then the tabs. Type a
+subsequence — `rfp` finds "Refactor the parser" — and press enter.
+
+The sidebar is fine at four agents. `rook fan --agents 8` is one command.
 
 ## Keys
 
@@ -449,6 +488,7 @@ your own keymap.
 | `n` / `p` | next / previous tab | | `D` | close workspace |
 | `1`–`9` | jump to tab | | `b` | toggle sidebar |
 | `T` | rename tab | | `g` | keyboard sidebar navigation |
+| `[` / `esc` | scroll & copy mode | | `f` / `/` | go to (fuzzy) |
 | `v` / `-` | split right / down | | `m` | toggle mouse capture |
 | `h` `j` `k` `l` | move focus | | `?` | help |
 | `H` `J` `K` `L` | resize | | `q` | detach |
@@ -540,6 +580,25 @@ the drop is counted rather than hidden.
 | `rook attach [session]` | attach a TUI |
 | `rook ls` | list sessions and pane counts |
 | `rook ping` / `rook kill [session]` | liveness check / stop a session |
+
+### The layout survives a restart
+
+Restarting the daemon is routine — a new binary changes nothing until the old
+one goes away, which is exactly what `just install` does — and it used to take
+every workspace, tab and split with it. The tree is now saved to
+`~/.local/state/rookery/<session>/layout.json` whenever it changes, and read
+back when the daemon starts.
+
+What comes back: workspaces (names, directories, branches), tabs, the split
+tree with its ratios, which pane was focused, which tab was active. Panes come
+back as **a shell in the directory they were in** — not as whatever was running
+in them. Relaunching eight agents (or a `tail -f`, or a half-finished
+`git rebase`) because a daemon restarted is not a decision a multiplexer should
+make for you. The structure is the tedious part; that is the part restored.
+
+The file is written only when the structure actually changes, so a session full
+of chatty agents does not rewrite it four times a second. Delete it to start
+clean.
 
 ## Agents
 

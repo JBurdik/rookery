@@ -20,6 +20,9 @@ func (l *Loop) buildState() attachproto.State {
 		Panes:           []attachproto.PaneSummary{},
 		Agents:          []attachproto.AgentSummary{},
 	}
+	if p := l.app.panes[l.app.focusedPane()]; p != nil && p.View.active {
+		s.Copy, s.Selecting = true, p.View.anchor >= 0
+	}
 
 	for _, w := range l.app.workspaces {
 		s.Workspaces = append(s.Workspaces, l.workspaceSummary(w))

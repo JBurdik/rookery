@@ -585,6 +585,8 @@ var helpRight = []helpEntry{
 	{config.ActionPrevWorkspace, "prev workspace"},
 	{config.ActionCloseWorkspce, "close workspace"},
 	{"", "view"},
+	{config.ActionGoto, "go to (fuzzy)"},
+	{config.ActionCopyMode, "scroll / copy mode"},
 	{config.ActionGit, "git UI in a pane"},
 	{config.ActionManager, "type at the manager"},
 	{config.ActionToggleSidebar, "toggle sidebar"},
@@ -629,7 +631,8 @@ func (m *model) renderHelp(maxWidth int) []string {
 		m.p.popoverKey.Render(clampPad(strings.Join(m.keys.KeysFor(config.ActionDetach), " "), keyCol))+
 			m.p.popoverBG.Render(" detach, agents keep running"),
 		"",
-		m.p.popoverMuted.Render(" mouse: click a pane, tab, workspace or agent · drag a divider"),
+		m.p.popoverMuted.Render(" copy mode: j/k g/G move · v select · y copy · esc exit"),
+		m.p.popoverMuted.Render(" mouse: click a pane, tab, workspace or agent · drag a divider · wheel scrolls back"),
 		m.p.popoverMuted.Render(" shift+drag for your terminal's own text selection"),
 		"",
 		m.p.popoverMuted.Render(" "+m.configPath),

@@ -108,6 +108,8 @@ const (
 	ActionNextWorkspace = "next_workspace"
 	ActionPrevWorkspace = "prev_workspace"
 	ActionCloseWorkspce = "close_workspace"
+	ActionCopyMode      = "copy_mode"
+	ActionGoto          = "goto"
 	ActionToggleSidebar = "toggle_sidebar"
 	ActionFocusSidebar  = "focus_sidebar"
 	ActionToggleMouse   = "toggle_mouse"
@@ -136,7 +138,7 @@ func DefaultConfig() Config {
 }
 
 // DefaultHotkeys is Herdr's default keymap, minus the features rookery does
-// not have yet (copy mode, plugins, the goto picker).
+// not have yet (plugins).
 func DefaultHotkeys() Hotkeys {
 	return Hotkeys{
 		Prefix: "ctrl+b",
@@ -163,6 +165,8 @@ func DefaultHotkeys() Hotkeys {
 			ActionNextWorkspace: {"w"},
 			ActionPrevWorkspace: {"W"},
 			ActionCloseWorkspce: {"D"},
+			ActionCopyMode:      {"[", "esc"},
+			ActionGoto:          {"f", "/"},
 			ActionToggleSidebar: {"b"},
 			ActionFocusSidebar:  {"g"},
 			ActionToggleMouse:   {"m"},

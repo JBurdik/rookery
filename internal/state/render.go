@@ -132,7 +132,11 @@ func (l *Loop) buildFrame() attachproto.Frame {
 		case withHeader:
 			l.drawPaneHeader(canvas, rect, pane, i+1, focused)
 		}
-		canvas.Blit(pane.Grid.Snapshot(focused), content.X, content.Y)
+		if pane.View.active {
+			l.drawScrollView(canvas, content, pane)
+		} else {
+			canvas.Blit(pane.Grid.Snapshot(focused), content.X, content.Y)
+		}
 
 		if focused {
 			cx, cy := pane.Grid.CursorPosition()
@@ -149,6 +153,31 @@ func (l *Loop) buildFrame() attachproto.Frame {
 		CursorX:  cursorX,
 		CursorY:  cursorY,
 		Revision: l.frameRevision(),
+	}
+}
+
+// drawScrollView paints a pane's transcript window in place of its live
+// screen, with the selected lines banded in reverse video.
+func (l *Loop) drawScrollView(canvas *termgrid.Canvas, r Rect, pane *Pane) {
+	lines := pane.Grid.ScrollbackLines()
+	from, to := pane.View.selection()
+
+	base := termgrid.Cell{Char: ' ', FG: termgrid.DefaultFG, BG: termgrid.DefaultBG}
+	canvas.Fill(r.X, r.Y, r.W, r.H, base)
+
+	for y := range r.H {
+		idx := pane.View.top + y
+		if idx >= len(lines) {
+			break
+		}
+		style := base
+		if idx >= from && idx <= to {
+			style.Mode |= termgrid.ModeReverse
+			// The band runs the full width, so a short line still reads as
+			// "this whole line is selected" rather than as highlighted text.
+			canvas.Fill(r.X, r.Y+y, r.W, 1, style)
+		}
+		canvas.DrawText(r.X, r.Y+y, truncate(lines[idx], r.W), style)
 	}
 }
 
@@ -198,7 +227,7 @@ func (l *Loop) drawPaneBorder(canvas *termgrid.Canvas, rect Rect, pane *Pane, in
 func (l *Loop) drawPaneTitle(canvas *termgrid.Canvas, rect Rect, pane *Pane, index int, focused bool, edge termgrid.Cell) {
 	prefix := " " + string(rune('0'+index%10)) + " "
 	glyph := l.statusGlyph(pane)
-	name := " " + pane.displayName()
+	name := " " + pane.displayName() + scrollSuffix(pane)
 	if pane.Status == "exited" {
 		name += " [exited]"
 	}
@@ -237,7 +266,7 @@ func (l *Loop) drawPaneHeader(canvas *termgrid.Canvas, rect Rect, pane *Pane, in
 	// the spinner is the one moving thing on screen and should look like it.
 	prefix := string(rune('0'+index%10)) + " "
 	glyph := l.statusGlyph(pane)
-	name := " " + pane.displayName()
+	name := " " + pane.displayName() + scrollSuffix(pane)
 	if pane.Status == "exited" {
 		name += " [exited]"
 	}

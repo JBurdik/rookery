@@ -70,6 +70,9 @@ type Pane struct {
 	// seconds afterwards: a badge you have to be looking at is no use if the
 	// thing that changed is on the screen you are already staring at.
 	DoneAt time.Time
+	// View is the pane's scroll/copy viewport. Inactive means "draw the live
+	// screen", which is every pane almost all of the time.
+	View scrollView
 	// Title is the agent's own terminal title, spinner stripped. Agents put
 	// the current task there ("Count from 1 to 30"), which is far more use in
 	// a sidebar than the executable's name repeated once per pane.

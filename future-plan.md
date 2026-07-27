@@ -47,23 +47,40 @@ Shipped in that round: workspaces → tabs → panes, mouse (click/drag/scroll +
 forwarding), agents-only sidebar panel with unread markers, `prefix ?` help,
 and `~/.rook/{config,hotkeys}.json`.
 
-Still missing against Herdr:
+Still missing against Herdr (copy mode, the scrollback viewport, layout
+persistence and the goto picker have since landed — see the round below):
 
-- **Copy mode** (`prefix+[`) and drag-to-select-and-copy. Needs a selection
-  model over the grid plus clipboard integration.
 - **Right-click context menus** on panes, tabs and workspaces.
-- **Real scrollback viewport.** A wheel in a pane that hasn't requested mouse
-  reporting currently sends arrow keys; scrolling a history buffer needs a
-  per-pane viewport offset the renderer honours.
-- **Layout persistence** across a daemon restart (Herdr's session-state).
 - **Swap panes** (`prefix+shift+hjkl`) and a resize *mode* rather than
   one-shot resize keys.
-- **Goto picker** (`prefix+g` is currently sidebar navigation, not a fuzzy
-  finder over everything).
 - **Per-client viewports** — one composite frame is rendered at the last
   attacher's size, so two clients with different terminal sizes share the
   smaller one.
-- **Plugins, git worktrees, OS notifications, mobile client.**
+- **Plugins and a mobile client.**
+
+## Deferred out of the scroll/copy/goto/persistence round (2026-07-27)
+
+Shipped in that round: a scroll viewport with copy mode (`prefix [`, wheel,
+OSC 52 yank), layout persistence across a daemon restart, and the `prefix f`
+goto picker.
+
+Still open, in the order they are likely to bite:
+
+- **Cell-accurate scrollback.** The viewport draws the plain-text transcript:
+  no colour, no wrapping, and a full-screen redraw (an agent's TUI) is
+  meaningless in it. A real one needs an emulator that keeps styled history —
+  `charmbracelet/x/vt` has it, and is exactly the dependency `internal/termgrid`
+  documents why it could not take.
+- **Character selection and drag-to-select.** Selection is by whole lines. A
+  cell-accurate history is a prerequisite for the first; the second also needs
+  press/drag/release to be routed to the viewport rather than to focus.
+- **Restoring what was running in a pane.** The commands are recorded in
+  `layout.json` and deliberately not re-run. If it turns out to be wanted, the
+  shape is a flag, not a redesign — but the default should stay "a shell".
+- **Persisting scroll position / zoom across a restart.** Zoom is saved,
+  scroll is not; the transcript it referred to is gone with the old process.
+- **Picking across sessions.** The goto picker sees one session's state,
+  because that is all a client is attached to.
 
 ## Agent manifests (2026-07-27)
 

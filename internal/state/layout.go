@@ -8,15 +8,18 @@ package state
 // pays off for "resize one pane, keep siblings proportional" — behaviour
 // nobody has asked for yet. Splitting an already-split node just nests one
 // level deeper, which is what tmux does too.
+// The json tags are what the saved layout file is written with — see
+// internal/state/persist.go.
 type Layout struct {
 	// Leaf.
-	PaneID string
+	PaneID string `json:"pane,omitempty"`
 
 	// Split. Dir is "h" (children side by side, a vertical divider between
 	// them) or "v" (children stacked, a horizontal divider).
-	Dir   string
-	Ratio float64 // share of the space given to A, in (0,1)
-	A, B  *Layout
+	Dir   string  `json:"dir,omitempty"`
+	Ratio float64 `json:"ratio,omitempty"` // share of the space given to A, in (0,1)
+	A     *Layout `json:"a,omitempty"`
+	B     *Layout `json:"b,omitempty"`
 }
 
 // Rect is a pane's position on screen, in cells.

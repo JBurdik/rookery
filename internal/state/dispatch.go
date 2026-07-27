@@ -10,8 +10,6 @@ import (
 	"github.com/jirkab/rookery/internal/agentstatus"
 	"github.com/jirkab/rookery/internal/apiproto"
 	"github.com/jirkab/rookery/internal/attachproto"
-	"github.com/jirkab/rookery/internal/pty"
-	"github.com/jirkab/rookery/internal/termgrid"
 )
 
 const defaultCols, defaultRows = 80, 24
@@ -547,51 +545,11 @@ func (l *Loop) paneCreate(id string, p apiproto.PaneCreateParams) apiproto.Respo
 		}
 	}
 
-	paneID := w.newPaneID()
-	cols, rows := p.Cols, p.Rows
-	if cols <= 0 || rows <= 0 {
-		cols, rows = defaultCols, defaultRows
-	}
-	grid := termgrid.New(cols, rows)
-
-	// Every pane learns where it is, so an agent running inside one can call
-	// back into `rook pane ...` without being told anything.
-	env := os.Environ()
-	for k, v := range p.Env {
-		env = append(env, k+"="+v)
-	}
-	env = append(env,
-		"ROOK_SESSION="+l.app.Session,
-		"ROOK_PANE="+paneID,
-		"ROOK_TAB="+tab.ID,
-		"ROOK_WORKSPACE="+w.ID,
-		"ROOK_ENV=1",
-	)
-
-	actor, err := pty.Spawn(p.Cmd, p.Args, p.Cwd, env, cols, rows,
-		func(data []byte) { l.NotifyPTYOutput(paneID, data) },
-		func(_ error, code int) { l.NotifyPTYExit(paneID, code) },
-	)
+	pane, err := l.startPane(w.newPaneID(), w, tab, p)
 	if err != nil {
 		return errResp(id, apiproto.ErrInternal, err.Error())
 	}
-
-	pane := &Pane{
-		ID:         paneID,
-		Label:      p.Label,
-		Cmd:        p.Cmd,
-		Args:       p.Args,
-		Cwd:        p.Cwd,
-		Grid:       grid,
-		Actor:      actor,
-		Status:     "running",
-		CreatedAt:  time.Now(),
-		Agent:      l.agents.Agent(p.Cmd, p.Args),
-		AgentState: agentstatus.Working, // starting up counts as busy
-		Seen:       true,
-		LastOutput: time.Now(),
-	}
-	l.app.panes[paneID] = pane
+	paneID := pane.ID
 
 	if tab.layout == nil {
 		tab.layout = newLeaf(paneID)
@@ -916,14 +874,15 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 			l.focusPane(paneID)
 		}
 	case "wheel":
-		// Without mouse reporting the sensible fallback is arrow keys: it
-		// scrolls shell history and pagers, which is what a wheel is for
-		// here. A real scrollback viewport is future-plan.md work.
-		seq := "\x1b[A"
+		// A wheel over a program that did not ask for mouse reporting scrolls
+		// the pane's own history. It used to send arrow keys, which in a shell
+		// walks command history instead — the one thing a wheel should never
+		// do.
+		delta := -wheelLines
 		if m.Button == "down" {
-			seq = "\x1b[B"
+			delta = wheelLines
 		}
-		_, _ = pane.Actor.Write([]byte(seq + seq + seq))
+		l.scrollBy(pane, delta)
 	}
 }
 

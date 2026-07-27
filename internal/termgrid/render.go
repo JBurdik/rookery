@@ -12,6 +12,11 @@ const (
 	attrBlink                 // 32
 )
 
+// ModeReverse is the reverse-video bit, exported for the daemon's own chrome
+// (the copy-mode selection band) — the only attribute anything outside this
+// package needs to set by hand.
+const ModeReverse int16 = attrReverse
+
 // RenderANSI returns the current screen as a styled ANSI string: exactly
 // `rows` lines joined by "\n", no trailing newline.
 //

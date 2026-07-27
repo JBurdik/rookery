@@ -127,6 +127,10 @@ func serveForeground(sessionName string) error {
 	}
 	loop.SetAgentRegistry(registry)
 
+	// Bring back the workspace/tab/split tree the last daemon had. Panes come
+	// back as shells in their old directories — see internal/state/persist.go.
+	loop.Restore()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {

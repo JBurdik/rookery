@@ -30,6 +30,9 @@ const (
 	// TypeManagerReply carries the manager agent's answer back to the command
 	// bar it was asked from.
 	TypeManagerReply = "manager_reply"
+	// TypeCopy carries yanked text back to the client, which is the process
+	// that owns a terminal and can therefore reach a clipboard (OSC 52).
+	TypeCopy = "copy"
 )
 
 // Action names a client -> server UI command that needs no payload beyond a
@@ -50,6 +53,13 @@ const (
 	ActionRenameWS     = "rename_workspace"
 	ActionGit          = "git"
 	ActionManager      = "manager"
+	// Scroll / copy mode. ActionScroll's Text is the movement: "up", "down",
+	// "page_up", "page_down", "top", "bottom".
+	ActionScrollMode = "scroll_mode"
+	ActionScroll     = "scroll"
+	ActionScrollExit = "scroll_exit"
+	ActionCopySelect = "copy_select"
+	ActionCopyYank   = "copy_yank"
 )
 
 // Hello is the client's opening frame.
@@ -115,6 +125,13 @@ type State struct {
 	// Dividers are the draggable split borders of the active tab.
 	Dividers []DividerRect `json:"dividers,omitempty"`
 	Zoomed   bool          `json:"zoomed,omitempty"`
+	// Copy reports that the focused pane is in scroll/copy mode, which is what
+	// tells the client to route keys to its copy bindings rather than at the
+	// program in the pane.
+	Copy bool `json:"copy,omitempty"`
+	// Selecting reports that a selection is in progress, so the client's hint
+	// line can say what y will yank.
+	Selecting bool `json:"selecting,omitempty"`
 }
 
 type WorkspaceSummary struct {
@@ -289,6 +306,12 @@ type Notify struct {
 	Title  string `json:"title,omitempty"`
 }
 
+// Copy carries yanked text to the client for the clipboard.
+type Copy struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 // ManagerReply is the manager agent's answer, for the command bar.
 type ManagerReply struct {
 	Type string `json:"type"`
@@ -313,6 +336,8 @@ type ServerMsg struct {
 	Agents          []AgentSummary     `json:"agents,omitempty"`
 	Dividers        []DividerRect      `json:"dividers,omitempty"`
 	Zoomed          bool               `json:"zoomed,omitempty"`
+	Copy            bool               `json:"copy,omitempty"`
+	Selecting       bool               `json:"selecting,omitempty"`
 	Focus           string             `json:"focus,omitempty"`
 	PaneID          string             `json:"pane_id,omitempty"`
 	Cols            int                `json:"cols,omitempty"`

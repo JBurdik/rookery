@@ -115,6 +115,10 @@ type Loop struct {
 	sound   *notify.Player
 	agents  *agentstatus.Registry
 
+	// lastSnapshot is the layout as it was last written to disk, so an
+	// unchanged tree costs a marshal rather than a file write.
+	lastSnapshot string
+
 	ptyMsgs     chan ptyOutputMsg
 	ptyExits    chan ptyExitMsg
 	apiMsgs     chan apiMsg
@@ -344,6 +348,10 @@ func (l *Loop) handleAttachInput(m attachInputMsg) {
 	if pane == nil {
 		return
 	}
+	// Typing at a pane you scrolled back means you are done reading: jump to
+	// the live screen and let the keystroke through, rather than swallowing it
+	// and looking wedged.
+	l.exitScroll(pane)
 	pane.Seen = true
 	_, _ = pane.Actor.Write([]byte(m.data))
 }
@@ -406,6 +414,20 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 		if _, t := l.app.resolveTab(m.target); t != nil {
 			t.Name = m.text
 			l.broadcastState()
+		}
+	case attachproto.ActionScrollMode:
+		l.enterScroll(l.app.panes[l.app.focusedPane()])
+	case attachproto.ActionScroll:
+		l.scrollCommand(l.app.panes[l.app.focusedPane()], m.text)
+	case attachproto.ActionScrollExit:
+		l.exitScroll(l.app.panes[l.app.focusedPane()])
+	case attachproto.ActionCopySelect:
+		l.toggleSelect(l.app.panes[l.app.focusedPane()])
+	case attachproto.ActionCopyYank:
+		if text := l.copySelection(l.app.panes[l.app.focusedPane()]); text != "" {
+			if c, cok := l.app.clients[m.clientID]; cok {
+				send(c.send, attachproto.Copy{Type: attachproto.TypeCopy, Text: text})
+			}
 		}
 	case attachproto.ActionGit:
 		resp = l.openGitTool()
@@ -873,6 +895,9 @@ func (l *Loop) isVisible(paneID string) bool {
 }
 
 func (l *Loop) broadcastState() {
+	// Every structural change already funnels through here, which makes it
+	// the one place the layout has to be saved from.
+	l.persist()
 	l.broadcastControl(l.buildState())
 }
 
