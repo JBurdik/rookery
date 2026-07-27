@@ -23,6 +23,11 @@ const (
 	// idleAfter is how long a pane running an unrecognised command must stay
 	// quiet before it counts as idle rather than working.
 	idleAfter = 900 * time.Millisecond
+	// blinkInterval is one half-cycle of the attention blink; blinkFor is how
+	// long a finished pane keeps blinking. Long enough to catch an eye that
+	// was elsewhere, short enough not to become wallpaper.
+	blinkInterval = 400 * time.Millisecond
+	blinkFor      = 4 * time.Second
 )
 
 type ptyOutputMsg struct {
@@ -52,6 +57,12 @@ type ClientTheme struct {
 	SpinnerColor string
 	// Borders is the pane-box mode: auto, always or never.
 	Borders string
+	// DoneColor is what a finished pane's border flashes.
+	DoneColor string
+	// Blink enables that flash at all.
+	Blink bool
+	// ManagerCmd is the agent the manager bar talks to.
+	ManagerCmd string
 }
 
 type attachConnectMsg struct {
@@ -63,6 +74,11 @@ type attachConnectMsg struct {
 }
 
 type attachDisconnectMsg struct{ clientID uint64 }
+
+type clientFocusMsg struct {
+	clientID uint64
+	focused  bool
+}
 
 type attachInputMsg struct {
 	clientID uint64
@@ -94,14 +110,15 @@ type Loop struct {
 	sound   *notify.Player
 	agents  *agentstatus.Registry
 
-	ptyMsgs    chan ptyOutputMsg
-	ptyExits   chan ptyExitMsg
-	apiMsgs    chan apiMsg
-	attachConn chan attachConnectMsg
-	attachDisc chan attachDisconnectMsg
-	attachIn   chan attachInputMsg
-	attachSize chan attachResizeMsg
-	attachCmds chan attachCmdMsg
+	ptyMsgs     chan ptyOutputMsg
+	ptyExits    chan ptyExitMsg
+	apiMsgs     chan apiMsg
+	attachConn  chan attachConnectMsg
+	attachDisc  chan attachDisconnectMsg
+	attachIn    chan attachInputMsg
+	attachSize  chan attachResizeMsg
+	attachCmds  chan attachCmdMsg
+	clientFocus chan clientFocusMsg
 }
 
 // SetSound installs the notification player. The daemon owns it rather than
@@ -122,17 +139,18 @@ func (l *Loop) SetAgentRegistry(r *agentstatus.Registry) {
 func NewLoop(session, version string) *Loop {
 	registry, _ := agentstatus.Load("")
 	return &Loop{
-		app:        newApp(session),
-		version:    version,
-		agents:     registry,
-		ptyMsgs:    make(chan ptyOutputMsg, 256),
-		ptyExits:   make(chan ptyExitMsg, 16),
-		apiMsgs:    make(chan apiMsg),
-		attachConn: make(chan attachConnectMsg, 4),
-		attachDisc: make(chan attachDisconnectMsg, 4),
-		attachIn:   make(chan attachInputMsg, 256),
-		attachSize: make(chan attachResizeMsg, 16),
-		attachCmds: make(chan attachCmdMsg, 64),
+		app:         newApp(session),
+		version:     version,
+		agents:      registry,
+		ptyMsgs:     make(chan ptyOutputMsg, 256),
+		ptyExits:    make(chan ptyExitMsg, 16),
+		apiMsgs:     make(chan apiMsg),
+		attachConn:  make(chan attachConnectMsg, 4),
+		attachDisc:  make(chan attachDisconnectMsg, 4),
+		attachIn:    make(chan attachInputMsg, 256),
+		attachSize:  make(chan attachResizeMsg, 16),
+		attachCmds:  make(chan attachCmdMsg, 64),
+		clientFocus: make(chan clientFocusMsg, 8),
 	}
 }
 
@@ -161,13 +179,29 @@ func (l *Loop) Run() {
 		case m := <-l.attachConn:
 			l.handleAttachConnect(m)
 		case m := <-l.attachDisc:
-			delete(l.app.clients, m.clientID)
+			// Closing the channel is the loop's job: it is the only writer,
+			// and it must stop writing before the channel goes away. Doing it
+			// here is what makes that ordering guaranteed rather than lucky.
+			if c, ok := l.app.clients[m.clientID]; ok {
+				delete(l.app.clients, m.clientID)
+				close(c.send)
+			}
 		case m := <-l.attachIn:
 			l.handleAttachInput(m)
 		case m := <-l.attachSize:
 			l.handleAttachResize(m)
 		case m := <-l.attachCmds:
 			l.handleAttachCmd(m)
+		case m := <-l.clientFocus:
+			if c, ok := l.app.clients[m.clientID]; ok {
+				c.focused = m.focused
+				if m.focused {
+					// Coming back to the terminal counts as seeing whatever is
+					// on screen, which is what clears the badges.
+					l.markVisibleSeen()
+					l.broadcastState()
+				}
+			}
 		case <-status.C:
 			l.refreshAgentStatus()
 			l.expireWaiters()
@@ -219,6 +253,11 @@ func (l *Loop) NotifyAttachCmd(clientID uint64, kind, target, text, dir string) 
 	l.attachCmds <- attachCmdMsg{clientID: clientID, kind: kind, target: target, text: text, dir: dir}
 }
 
+// NotifyClientFocus reports a client's terminal gaining or losing focus.
+func (l *Loop) NotifyClientFocus(clientID uint64, focused bool) {
+	l.clientFocus <- clientFocusMsg{clientID: clientID, focused: focused}
+}
+
 func (l *Loop) NotifyAttachMouse(clientID uint64, m attachproto.Mouse) {
 	l.attachCmds <- attachCmdMsg{clientID: clientID, kind: attachproto.TypeMouse, mouse: m}
 }
@@ -249,7 +288,11 @@ func (l *Loop) handlePTYExit(m ptyExitMsg) {
 }
 
 func (l *Loop) handleAttachConnect(m attachConnectMsg) {
-	l.app.clients[m.clientID] = &attachClientConn{id: m.clientID, send: m.send, cols: m.cols, rows: m.rows}
+	// Assume focused until told otherwise: a terminal that cannot report
+	// focus would otherwise look permanently away.
+	l.app.clients[m.clientID] = &attachClientConn{
+		id: m.clientID, send: m.send, cols: m.cols, rows: m.rows, focused: true,
+	}
 	l.setViewport(m.cols, m.rows)
 	// Adopt the client's glyph theme so the pane headers the daemon draws
 	// match the sidebar the client draws.
@@ -263,6 +306,11 @@ func (l *Loop) handleAttachConnect(m attachConnectMsg) {
 	l.app.headerFG = termgrid.ParseColor(m.theme.HeaderFG, l.app.headerFG)
 	l.app.borderFG = termgrid.ParseColor(m.theme.Border, l.app.borderFG)
 	l.app.spinnerFG = termgrid.ParseColor(m.theme.SpinnerColor, l.app.spinnerFG)
+	l.app.doneFG = termgrid.ParseColor(m.theme.DoneColor, l.app.doneFG)
+	l.app.blink = m.theme.Blink
+	if m.theme.ManagerCmd != "" {
+		l.app.managerCmd = m.theme.ManagerCmd
+	}
 	if m.theme.Borders != "" {
 		l.app.borders = m.theme.Borders
 	}
@@ -345,6 +393,8 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 		}
 	case attachproto.ActionGit:
 		resp = l.openGitTool()
+	case attachproto.ActionManager:
+		resp = l.managerSend(m.text, l.app.managerCmd)
 	case attachproto.ActionNewWorkspace:
 		resp = l.workspaceCreate("attach", apiproto.WorkspaceCreateParams{Name: m.text})
 	case attachproto.ActionFocusWS:
@@ -626,6 +676,7 @@ func (l *Loop) refreshAgentStatus() {
 		}
 		switch {
 		case next == agentstatus.Idle && pane.AgentState != agentstatus.Unknown:
+			pane.DoneAt = time.Now()
 			// A turn just ended. If the pane wasn't on screen, that result is
 			// unseen — which is exactly what "done" means.
 			_, onScreen := visible[pane.ID]
@@ -691,6 +742,15 @@ func (l *Loop) alert(pane *Pane, kind notify.Kind) {
 		return // a shell going quiet is not news
 	}
 	l.sound.Play(kind)
+	if !l.app.anyFocused() {
+		// Nobody is looking at the terminal, so a sound alone can be missed
+		// entirely — this is the case an OS notification exists for.
+		what := "finished"
+		if kind == notify.Blocked {
+			what = "needs your input"
+		}
+		l.sound.Desktop(pane.displayName()+" "+what, l.app.Session+" · "+pane.Agent)
+	}
 	l.broadcastControl(attachproto.Notify{
 		Type:   attachproto.TypeNotify,
 		Kind:   string(kind),
@@ -703,7 +763,7 @@ func (l *Loop) alert(pane *Pane, kind notify.Kind) {
 // flushFrame broadcasts a fresh composite frame when anything changed since
 // the last one.
 func (l *Loop) flushFrame() {
-	dirty := l.app.dirty || l.spinnerAdvanced()
+	dirty := l.app.dirty || l.spinnerAdvanced() || l.blinkAdvanced()
 	for _, pane := range l.app.panes {
 		if pane.Grid.TakeDirty() {
 			// Only visible panes force a repaint; a background tab scrolling
@@ -731,6 +791,36 @@ func (l *Loop) flushFrame() {
 // spinnerAdvanced reports whether the spinner needs a repaint: only when the
 // frame actually changed and something on screen is animating, so an idle
 // session still costs nothing between keystrokes.
+// blinkPhase is the on/off half of the attention blink, from the wall clock so
+// the daemon's borders and the client's sidebar blink together.
+func blinkPhase(now time.Time) bool {
+	return (now.UnixMilli()/blinkInterval.Milliseconds())%2 == 0
+}
+
+// blinking reports whether a pane should be drawing attention right now.
+func (l *Loop) blinking(pane *Pane) bool {
+	if pane.DoneAt.IsZero() || !l.app.blink {
+		return false
+	}
+	return time.Since(pane.DoneAt) < blinkFor
+}
+
+// blinkAdvanced reports whether a blink needs a repaint: only while a visible
+// pane is inside its blink window and the phase actually flipped.
+func (l *Loop) blinkAdvanced() bool {
+	phase := blinkPhase(time.Now())
+	if phase == l.app.blinkOn {
+		return false
+	}
+	for id := range l.app.rects() {
+		if p := l.app.panes[id]; p != nil && l.blinking(p) {
+			l.app.blinkOn = phase
+			return true
+		}
+	}
+	return false
+}
+
 func (l *Loop) spinnerAdvanced() bool {
 	frame := icons.Frame(l.app.spinner, time.Now())
 	if frame == l.app.spinnerFrame {

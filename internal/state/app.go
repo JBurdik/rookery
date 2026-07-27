@@ -15,6 +15,10 @@ type attachClientConn struct {
 	send chan any
 	cols int
 	rows int
+	// focused is whether this client's terminal window has focus. A sound is
+	// enough when you are looking at the terminal; an OS notification is what
+	// reaches you when you are in another app entirely.
+	focused bool
 }
 
 // App is the daemon's in-memory state. Only internal/state/loop.go ever
@@ -63,9 +67,15 @@ type App struct {
 	headerFG  termgrid.Color
 	borderFG  termgrid.Color
 	spinnerFG termgrid.Color
+	doneFG    termgrid.Color
 	// borders is the pane-box mode the attached client asked for: auto,
 	// always or never.
 	borders string
+	// blink flashes a finished pane's border; blinkOn is the last phase drawn.
+	blink   bool
+	blinkOn bool
+	// managerCmd is the agent the manager bar starts, from the client's config.
+	managerCmd string
 
 	clients map[uint64]*attachClientConn
 	waiters []*waiter
@@ -84,8 +94,26 @@ func newApp(session string) *App {
 		headerFG:  244,
 		borderFG:  238,
 		spinnerFG: 208,
+		doneFG:    2,
 		borders:   BordersAuto,
+		blink:     true,
 	}
+}
+
+// anyFocused reports whether a human is currently looking at any attached
+// client.
+//
+// A client that has never reported focus counts as focused: plenty of
+// terminals do not support focus reporting, and silently swallowing every
+// notification on those is worse than occasionally sending one you did not
+// need.
+func (a *App) anyFocused() bool {
+	for _, c := range a.clients {
+		if c.focused {
+			return true
+		}
+	}
+	return false
 }
 
 // --- workspaces ---

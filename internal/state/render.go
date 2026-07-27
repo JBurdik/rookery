@@ -166,6 +166,12 @@ func (l *Loop) drawPaneBorder(canvas *termgrid.Canvas, rect Rect, pane *Pane, in
 		return
 	}
 	edge := l.borderCell(focused)
+	// A pane that just finished flashes its border, so a result landing on a
+	// screen you are already looking at still registers.
+	if l.blinking(pane) && blinkPhase(time.Now()) {
+		edge.FG = l.app.doneFG
+		edge.Mode |= 4 // bold
+	}
 
 	horizontal := func(y int, left, right rune) {
 		cell := edge

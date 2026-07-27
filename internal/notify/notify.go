@@ -35,13 +35,16 @@ type Config struct {
 	Mode        string `json:"mode"`
 	DonePath    string `json:"done_path,omitempty"`
 	BlockedPath string `json:"blocked_path,omitempty"`
+	// Desktop posts an OS notification as well as playing a sound. Only used
+	// when nobody is looking at the terminal — see the daemon's alert().
+	Desktop bool `json:"desktop"`
 	// MinInterval throttles a noisy session: with several agents finishing
 	// at once, one ping is informative and six is a fire alarm.
 	MinIntervalMS int `json:"min_interval_ms,omitempty"`
 }
 
 func DefaultConfig() Config {
-	return Config{Mode: ModeSystem, MinIntervalMS: 1500}
+	return Config{Mode: ModeSystem, Desktop: true, MinIntervalMS: 1500}
 }
 
 // Player rate-limits and plays notification sounds.

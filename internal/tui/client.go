@@ -35,7 +35,9 @@ func Run(sessionName, version string) error {
 	m := newModel(sessionName, conn, cfg, keys)
 	m.clientVersion = version
 
-	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	// WithReportFocus asks the terminal for focus/blur events, which is how
+	// the daemon knows whether a sound will be heard or a banner is needed.
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
 	if cfg.UI.MouseCapture {
 		// Cell motion, not all motion: rookery only needs drags and clicks,
 		// and reporting every pointer move would flood the socket.

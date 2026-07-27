@@ -218,6 +218,16 @@ type PaneDebugResult struct {
 	Bottom      []string `json:"bottom"`
 }
 
+// --- manager.send ---
+
+// ManagerSendParams hands a request to the manager agent, starting it if it
+// isn't running yet.
+type ManagerSendParams struct {
+	Text string `json:"text"`
+	// Cmd overrides which agent to start; empty uses the configured one.
+	Cmd string `json:"cmd,omitempty"`
+}
+
 // --- wait.pane ---
 
 // WaitPaneParams blocks until a pane reaches one of the wanted states, or

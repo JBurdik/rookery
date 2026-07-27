@@ -64,6 +64,14 @@ type UI struct {
 	// PaneBorders draws a box around each pane, with its title in the top
 	// edge: "auto" (once more than one pane shares a tab), "always", "never".
 	PaneBorders string `json:"pane_borders"`
+	// Blink flashes a pane's border for a few seconds after its agent
+	// finishes, so a result landing on the screen you are already looking at
+	// still registers.
+	Blink *bool `json:"blink,omitempty"`
+	// ManagerCmd is the agent the manager bar talks to. It runs in its own
+	// tab with rookery's CLI on PATH, so it can create panes, read them and
+	// wait on them — you describe what you want, it drives the multiplexer.
+	ManagerCmd string `json:"manager_cmd"`
 	// Colors is the palette; anything left out keeps its default.
 	Colors Colors `json:"colors"`
 	// Sound pings you when an agent finishes or gets stuck.
@@ -106,6 +114,7 @@ const (
 	ActionDetach        = "detach"
 	ActionHelp          = "help"
 	ActionGit           = "git"
+	ActionManager       = "manager"
 	ActionLiteralPrefix = "literal_prefix"
 )
 
@@ -119,6 +128,8 @@ func DefaultConfig() Config {
 		Icons:                 icons.ThemeUnicode,
 		Spinner:               "dots",
 		PaneBorders:           "auto",
+		ManagerCmd:            "claude",
+		Blink:                 boolPtr(true),
 		Colors:                DefaultColors(),
 		Sound:                 notify.DefaultConfig(),
 	}}
@@ -158,6 +169,7 @@ func DefaultHotkeys() Hotkeys {
 			ActionDetach:        {"q", "d"},
 			ActionHelp:          {"?"},
 			ActionGit:           {"G"},
+			ActionManager:       {":", "a"},
 			ActionLiteralPrefix: {"ctrl+b"},
 		},
 	}
@@ -186,6 +198,12 @@ func Load() (Config, Hotkeys, error) {
 	}
 	if cfg.UI.Spinner == "" {
 		cfg.UI.Spinner = "dots"
+	}
+	if cfg.UI.Blink == nil {
+		cfg.UI.Blink = boolPtr(true)
+	}
+	if cfg.UI.ManagerCmd == "" {
+		cfg.UI.ManagerCmd = "claude"
 	}
 	if cfg.UI.PaneBorders == "" {
 		cfg.UI.PaneBorders = "auto"
@@ -231,6 +249,10 @@ func write(path string, v any) error {
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o600)
 }
+
+// boolPtr exists because a plain bool cannot tell "the user set false" from
+// "the user said nothing", and the default here is true.
+func boolPtr(b bool) *bool { return &b }
 
 // Save writes the current config back, used when a runtime toggle should
 // persist.

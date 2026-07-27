@@ -76,7 +76,7 @@ func handleConn(conn net.Conn, loop *state.Loop) {
 	loop.NotifyAttachConnect(id, send, hello.Cols, hello.Rows, state.ClientTheme{
 		Icons: hello.Icons, Spinner: hello.Spinner,
 		Accent: hello.Accent, HeaderFG: hello.HeaderFG, Border: hello.Border,
-		SpinnerColor: hello.SpinnerColor, Borders: hello.Borders,
+		SpinnerColor: hello.SpinnerColor, Borders: hello.Borders, DoneColor: hello.DoneColor, Blink: hello.Blink, ManagerCmd: hello.ManagerCmd,
 	})
 
 	for {
@@ -106,12 +106,20 @@ func handleConn(conn net.Conn, loop *state.Loop) {
 			loop.NotifyAttachCmd(id, msg.Type, msg.PaneID, "", "")
 		case attachproto.TypeMoveFocus, attachproto.TypeResizePane:
 			loop.NotifyAttachCmd(id, msg.Type, "", "", msg.Direction)
+		case attachproto.TypeClientFocus:
+			loop.NotifyClientFocus(id, msg.Focused)
 		case attachproto.TypeZoom:
 			loop.NotifyAttachCmd(id, msg.Type, "", "", "")
 		}
 	}
 
+	// The loop closes the send channel, not this goroutine.
+	//
+	// Closing it here raced the daemon: NotifyAttachDisconnect is queued on a
+	// channel, so the loop could still be mid-broadcast to a client it had not
+	// yet removed — writing to a channel this side had already closed, which
+	// panics and takes the whole daemon down with every pane in it. Only the
+	// goroutine that writes to a channel may close it.
 	loop.NotifyAttachDisconnect(id)
-	close(send)
 	<-writerDone
 }

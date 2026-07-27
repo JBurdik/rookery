@@ -502,6 +502,7 @@ var helpRight = []helpEntry{
 	{config.ActionCloseWorkspce, "close workspace"},
 	{"", "view"},
 	{config.ActionGit, "git UI in a pane"},
+	{config.ActionManager, "ask the manager agent"},
 	{config.ActionToggleSidebar, "toggle sidebar"},
 	{config.ActionFocusSidebar, "sidebar navigation"},
 }

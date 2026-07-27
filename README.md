@@ -131,6 +131,44 @@ rookery deliberately does not implement its own git UI. lazygit is better than
 anything a multiplexer would grow on the side, and a pane is exactly the right
 place to put it.
 
+### Attention blink
+
+A pane's border flashes for four seconds when its agent finishes. The badge
+answers "which agent wants me" when you are looking elsewhere; the blink is
+for the case where the result lands on the screen you are already staring at.
+
+```json
+{ "ui": { "blink": false } }
+```
+
+The phase comes from the wall clock, so the daemon's borders and the client's
+chrome flash together without coordinating, and the repaint only runs while a
+visible pane is inside its blink window.
+
+### The manager bar
+
+`prefix :` (or `prefix a`) opens a one-line prompt at the bottom. Type what you
+want and it goes to a **manager agent** — an ordinary pane running your agent
+of choice, in its own tab, with rookery's CLI on its PATH:
+
+```
+manager: split a pane and run the tests, tell me if they fail▌
+```
+
+`rook manager <request...>` does the same from a shell.
+
+The manager is started on first use and briefed once: it is told it lives
+inside rookery and given the commands that matter (`rook pane new`,
+`pane send`, `pane read`, `wait agent-status`). Nothing about it is special
+beyond rookery remembering which pane it is — it has the same CLI and the same
+permissions as any agent you start yourself. It opens in its own tab and does
+not steal focus, so asking it something never rearranges what you were
+looking at.
+
+```json
+{ "ui": { "manager_cmd": "claude" } }
+```
+
 ### Colours
 
 Every colour is themeable; anything you leave out keeps its default:
@@ -212,6 +250,18 @@ so restart it after editing.
 `aplay` or `ffplay`), `bell` (the terminal bell, rung by the attached client),
 or `off`. Point `done_path` / `blocked_path` at your own audio files to
 override; a path that doesn't exist falls back rather than going silent.
+
+When your terminal does **not** have focus, the ping is joined by an OS
+notification — `terminal-notifier` or `osascript` on macOS, `notify-send` on
+Linux — because a sound you are not there to hear is no notification at all.
+The client reports focus and blur (terminal focus reporting, DECSET 1004), so
+when you are looking at the terminal you get the sound and nothing else. A
+terminal that cannot report focus is treated as focused, since a missing
+banner beats a stream of unwanted ones.
+
+```json
+{ "ui": { "sound": { "desktop": true } } }
+```
 
 It pings for exactly two transitions — an agent that just got **blocked**, and
 one that **finished with nobody watching**. Anything else would train you to

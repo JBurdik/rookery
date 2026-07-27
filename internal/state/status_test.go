@@ -1,6 +1,9 @@
 package state
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestIsShell(t *testing.T) {
 	tests := []struct {
@@ -21,5 +24,23 @@ func TestIsShell(t *testing.T) {
 		if got := isShell(tt.running, tt.cmd); got != tt.want {
 			t.Errorf("isShell(%q, %q) = %v, want %v", tt.running, tt.cmd, got, tt.want)
 		}
+	}
+}
+
+func TestBlinkPhaseAlternates(t *testing.T) {
+	base := time.UnixMilli(0)
+	if !blinkPhase(base) {
+		t.Error("phase at t=0 should be on")
+	}
+	if blinkPhase(base.Add(blinkInterval)) {
+		t.Error("phase should flip after one interval")
+	}
+	if !blinkPhase(base.Add(2 * blinkInterval)) {
+		t.Error("phase should flip back after two")
+	}
+	// Both sides derive it from the clock, so the same instant must agree.
+	at := time.UnixMilli(1_700_000_123_456)
+	if blinkPhase(at) != blinkPhase(at) {
+		t.Error("blinkPhase is not deterministic")
 	}
 }

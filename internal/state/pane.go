@@ -50,6 +50,14 @@ type Pane struct {
 	// that reads as "finished already", which pings you for nothing and
 	// lets `wait --status done` return before the work even starts.
 	BusyUntil time.Time
+	// Manager marks the pane holding the manager agent — the one the command
+	// bar talks to. Only rookery's memory of which pane it is makes it
+	// special; it is an ordinary pane otherwise.
+	Manager bool
+	// DoneAt is when a turn last ended. The pane's border blinks for a few
+	// seconds afterwards: a badge you have to be looking at is no use if the
+	// thing that changed is on the screen you are already staring at.
+	DoneAt time.Time
 	// Title is the agent's own terminal title, spinner stripped. Agents put
 	// the current task there ("Count from 1 to 30"), which is far more use in
 	// a sidebar than the executable's name repeated once per pane.

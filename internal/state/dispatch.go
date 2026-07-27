@@ -280,6 +280,17 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			Bottom:      pane.Grid.BottomLines(6),
 		}), false
 
+	case "manager.send":
+		var p apiproto.ManagerSendParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		cmd := p.Cmd
+		if cmd == "" {
+			cmd = l.app.managerCmd
+		}
+		return l.managerSend(p.Text, cmd), false
+
 	case "pane.git":
 		return l.openGitTool(), false
 

@@ -111,6 +111,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Border:       m.cfg.UI.Colors.Border,
 				SpinnerColor: m.cfg.UI.Colors.Spinner,
 				Borders:      m.cfg.UI.PaneBorders,
+				DoneColor:    m.cfg.UI.Colors.Done,
+				Blink:        m.cfg.UI.Blink == nil || *m.cfg.UI.Blink,
+				ManagerCmd:   m.cfg.UI.ManagerCmd,
 			})
 		} else {
 			m.send(attachproto.Resize{Type: attachproto.TypeResize, Cols: m.paneCols(), Rows: m.paneRows()})
@@ -122,6 +125,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.spinning {
 			return m, spinnerTick()
 		}
+		return m, nil
+
+	case tea.FocusMsg:
+		// The daemon needs to know: a sound is enough when you are here, a
+		// desktop banner is what reaches you when you are not.
+		m.send(attachproto.ClientFocus{Type: attachproto.TypeClientFocus, Focused: true})
+		return m, nil
+
+	case tea.BlurMsg:
+		m.send(attachproto.ClientFocus{Type: attachproto.TypeClientFocus, Focused: false})
 		return m, nil
 
 	case tea.KeyMsg:
@@ -205,6 +218,8 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.helpMode = true
 	case config.ActionGit:
 		m.act(attachproto.ActionGit, "", "")
+	case config.ActionManager:
+		m.startPrompt("manager", attachproto.ActionManager, "")
 	case config.ActionLiteralPrefix:
 		// prefix prefix sends the prefix key through, so a nested
 		// multiplexer or a readline user isn't locked out.

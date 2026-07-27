@@ -23,6 +23,10 @@ const (
 	TypeMoveFocus  = "move_focus"  // client -> server, focus by direction
 	TypeResizePane = "resize_pane" // client -> server, nudge a divider
 	TypeZoom       = "zoom"        // client -> server, toggle zoom
+	// TypeClientFocus reports whether the client's terminal window has focus.
+	// The daemon needs it to decide between a sound (you are here) and an OS
+	// notification (you are somewhere else entirely).
+	TypeClientFocus = "client_focus"
 )
 
 // Action names a client -> server UI command that needs no payload beyond a
@@ -42,6 +46,7 @@ const (
 	ActionCloseWS      = "close_workspace"
 	ActionRenameWS     = "rename_workspace"
 	ActionGit          = "git"
+	ActionManager      = "manager"
 )
 
 // Hello is the client's opening frame.
@@ -64,6 +69,13 @@ type Hello struct {
 	SpinnerColor string `json:"spinner_color,omitempty"`
 	// Borders selects pane boxes: "auto", "always" or "never".
 	Borders string `json:"borders,omitempty"`
+	// DoneColor is the colour a finished pane's border flashes; Blink turns
+	// the flash on. Both live on the client because the daemon draws the
+	// borders but the user configures the look.
+	DoneColor string `json:"done_color,omitempty"`
+	Blink     bool   `json:"blink,omitempty"`
+	// ManagerCmd is the agent the manager bar talks to.
+	ManagerCmd string `json:"manager_cmd,omitempty"`
 }
 
 // HelloAck acknowledges attach. The state that follows carries everything
@@ -246,6 +258,12 @@ type ResizePane struct {
 	Direction string `json:"direction"`
 }
 
+// ClientFocus reports the client's terminal window gaining or losing focus.
+type ClientFocus struct {
+	Type    string `json:"type"`
+	Focused bool   `json:"focused"`
+}
+
 // Zoom toggles "focused pane fills the tab".
 type Zoom struct {
 	Type string `json:"type"`
@@ -306,6 +324,10 @@ type ServerMsg struct {
 type Incoming struct {
 	Type         string `json:"type"`
 	Session      string `json:"session,omitempty"`
+	Focused      bool   `json:"focused,omitempty"`
+	DoneColor    string `json:"done_color,omitempty"`
+	Blink        bool   `json:"blink,omitempty"`
+	ManagerCmd   string `json:"manager_cmd,omitempty"`
 	Cols         int    `json:"cols,omitempty"`
 	Rows         int    `json:"rows,omitempty"`
 	Data         string `json:"data,omitempty"`
