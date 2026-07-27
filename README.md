@@ -10,6 +10,19 @@ go build -o rook ./cmd/rook
 ./rook                # attach to the default session (starts the daemon if needed)
 ```
 
+## Installing it
+
+```
+just install          # rook on your PATH, daemon restarted
+just setup            # that, plus the Claude hooks and the agent skill
+```
+
+Which is `go install ./cmd/rook` — `$(go env GOPATH)/bin` is on your PATH after
+a normal Go install, so there is no copy step and no `sudo`. The justfile is
+there for the part that is easy to forget: a new binary changes nothing until
+the running daemon goes away, so `install` kills it. `just` lists the rest
+(`build`, `test`, `check`, `kill`, `uninstall`).
+
 **After rebuilding, restart the daemon**: `rook` attaches to whatever daemon is
 already running, so a new binary changes nothing until the old one goes away.
 

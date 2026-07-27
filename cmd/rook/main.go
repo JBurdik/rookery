@@ -61,6 +61,11 @@ func main() {
 		err = cli.RunKill(os.Args[2:])
 	case "ping":
 		err = cli.RunPing(os.Args[2:])
+	case "version", "--version", "-v":
+		// Worth having as more than a footnote in the help text: the client
+		// already refuses to trust a daemon built from a different version, so
+		// "which one am I running" is a question that actually comes up.
+		fmt.Println("rook", cli.Version)
 	case "-h", "--help", "help":
 		usage()
 		return
