@@ -50,6 +50,11 @@ type Pane struct {
 	// that reads as "finished already", which pings you for nothing and
 	// lets `wait --status done` return before the work even starts.
 	BusyUntil time.Time
+	// Fan, Branch and Worktree tie a pane to a fan-out run: which group it
+	// belongs to, and the checkout its agent is working in.
+	Fan      string
+	Branch   string
+	Worktree string
 	// Manager marks the pane holding the manager agent — the one the command
 	// bar talks to. Only rookery's memory of which pane it is makes it
 	// special; it is an ordinary pane otherwise.

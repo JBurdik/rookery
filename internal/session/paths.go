@@ -24,6 +24,12 @@ func BaseDir() string {
 	return filepath.Join(home, ".local", "state", "rookery")
 }
 
+// WorktreeDir is where fan-out git worktrees are created. Under the state
+// directory rather than beside the repo: a fan-out is scratch space, and
+// scattering sibling directories through someone's source tree is a rude thing
+// for a multiplexer to do.
+func WorktreeDir() string { return filepath.Join(BaseDir(), "worktrees") }
+
 // Dir returns the directory for a named session.
 func Dir(name string) string {
 	return filepath.Join(BaseDir(), name)

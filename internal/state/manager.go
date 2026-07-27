@@ -3,9 +3,6 @@ package state
 import (
 	"regexp"
 	"strings"
-	"time"
-
-	"github.com/jirkab/rookery/internal/agentstatus"
 
 	"github.com/jirkab/rookery/internal/apiproto"
 	"github.com/jirkab/rookery/internal/attachproto"
@@ -28,23 +25,6 @@ const managerBriefing = `You are the manager agent inside rookery, a terminal mu
 	`pane send PANE text / pane read PANE --raw / wait agent-status PANE --status done / ` +
 	`tab new NAME / workspace ls. All output is JSON; "rook --help" has the rest. ` +
 	`You are $ROOK_PANE. Do what I ask with those commands, then answer in one short line.`
-
-// managerWarmup is how long after spawning the manager we refuse to type at
-// it, however idle it claims to look.
-//
-// An agent's screen has no "working" marker while its UI is still coming up,
-// so the status detector reasonably calls it idle — and text typed into a
-// composer that does not exist yet is simply lost. Two seconds is the
-// difference between a prompt that runs and one that vanishes.
-const managerWarmup = 2500 * time.Millisecond
-
-// managerMsg is one queued thing to say to the manager.
-type managerMsg struct {
-	text string
-	// user distinguishes a real request from the briefing, so only an answer
-	// to something you actually asked comes back to the bar.
-	user bool
-}
 
 // managerSend queues a request for the manager agent, starting it if needed.
 //
@@ -70,42 +50,15 @@ func (l *Loop) managerSend(text, managerCmd string) apiproto.Response {
 		}
 		// The briefing goes first, so the agent knows what it is for before it
 		// sees the request.
-		l.app.managerQueue = append(l.app.managerQueue, managerMsg{text: managerBriefing})
+		l.queueSend(pane.ID, managerBriefing, false)
 	}
 	if strings.TrimSpace(text) != "" {
-		l.app.managerQueue = append(l.app.managerQueue, managerMsg{text: text, user: true})
+		l.queueSend(pane.ID, text, true)
 	}
-	l.pumpManager()
+	l.pumpSends()
 	return ok("manager", apiproto.ManagerSendResult{
 		PaneID: pane.ID,
-		Queued: len(l.app.managerQueue),
-	})
-}
-
-// pumpManager sends the next queued message once the manager is ready for it:
-// started, idle, and not still digesting the last one. Called from the status
-// tick, so "ready" is re-checked four times a second.
-func (l *Loop) pumpManager() {
-	if len(l.app.managerQueue) == 0 {
-		return
-	}
-	pane := l.managerPane()
-	if pane == nil {
-		l.app.managerQueue = nil
-		return
-	}
-	if time.Since(pane.CreatedAt) < managerWarmup {
-		return
-	}
-	if pane.AgentState != agentstatus.Idle || time.Now().Before(pane.BusyUntil) {
-		return
-	}
-
-	msg := l.app.managerQueue[0]
-	l.app.managerQueue = l.app.managerQueue[1:]
-	l.app.managerAwaiting = msg.user
-	l.paneSendKeys("manager", apiproto.PaneSendKeysParams{
-		PaneID: pane.ID, Text: msg.text, PressEnter: true,
+		Queued: len(l.app.sendQueue[pane.ID]),
 	})
 }
 

@@ -119,6 +119,8 @@ type Loop struct {
 	attachSize  chan attachResizeMsg
 	attachCmds  chan attachCmdMsg
 	clientFocus chan clientFocusMsg
+	watchAdd    chan watchAddMsg
+	watchDel    chan chan apiproto.Event
 }
 
 // SetSound installs the notification player. The daemon owns it rather than
@@ -151,6 +153,8 @@ func NewLoop(session, version string) *Loop {
 		attachSize:  make(chan attachResizeMsg, 16),
 		attachCmds:  make(chan attachCmdMsg, 64),
 		clientFocus: make(chan clientFocusMsg, 8),
+		watchAdd:    make(chan watchAddMsg, 4),
+		watchDel:    make(chan chan apiproto.Event, 4),
 	}
 }
 
@@ -174,6 +178,7 @@ func (l *Loop) Run() {
 			}
 			if m.req.Method == "server.shutdown" {
 				l.failPendingWaiters()
+				l.closeWatchers()
 				return
 			}
 		case m := <-l.attachConn:
@@ -192,6 +197,10 @@ func (l *Loop) Run() {
 			l.handleAttachResize(m)
 		case m := <-l.attachCmds:
 			l.handleAttachCmd(m)
+		case m := <-l.watchAdd:
+			l.handleWatchAdd(m)
+		case ch := <-l.watchDel:
+			l.handleWatchDel(ch)
 		case m := <-l.clientFocus:
 			if c, ok := l.app.clients[m.clientID]; ok {
 				c.focused = m.focused
@@ -204,7 +213,7 @@ func (l *Loop) Run() {
 			}
 		case <-status.C:
 			l.refreshAgentStatus()
-			l.pumpManager()
+			l.pumpSends()
 			l.expireWaiters()
 		case <-frames.C:
 			l.flushFrame()
@@ -282,6 +291,7 @@ func (l *Loop) handlePTYExit(m ptyExitMsg) {
 	}
 	pane.Status = "exited"
 	pane.ExitCode = m.exitCode
+	l.emitPaneEvent(apiproto.EventPaneExit, pane)
 	l.app.dirty = true
 	l.broadcastControl(attachproto.PaneExit{Type: attachproto.TypePaneExit, PaneID: pane.ID, ExitCode: m.exitCode})
 	l.broadcastState()
@@ -692,7 +702,7 @@ func (l *Loop) refreshAgentStatus() {
 			// the agent finishes the turn unwatched.
 			pane.Seen = true
 		}
-		pane.AgentState = next
+		l.setAgentState(pane, next)
 		changed = true
 
 		// Ping only for the transitions that mean "a human is needed": an

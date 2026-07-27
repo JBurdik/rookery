@@ -285,6 +285,25 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			Bottom:      pane.Grid.BottomLines(6),
 		}), false
 
+	case "fan.start":
+		var p apiproto.FanStartParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.fanStart(req.ID, p), false
+
+	case "fan.list":
+		var p apiproto.FanListParams
+		_ = unmarshal(req.Params, &p)
+		return l.fanList(req.ID, p), false
+
+	case "fan.clean":
+		var p apiproto.FanCleanParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.fanClean(req.ID, p), false
+
 	case "manager.send":
 		var p apiproto.ManagerSendParams
 		if err := unmarshal(req.Params, &p); err != nil {
@@ -582,6 +601,7 @@ func (l *Loop) paneCreate(id string, p apiproto.PaneCreateParams) apiproto.Respo
 		tab.focus = paneID
 	}
 	l.app.dirty = true
+	l.emitPaneEvent(apiproto.EventPaneNew, pane)
 	l.broadcastState()
 	return ok(id, l.paneInfo(pane))
 }
@@ -632,6 +652,7 @@ func (l *Loop) paneClose(id string, p apiproto.PaneCloseParams) apiproto.Respons
 	}
 
 	l.app.dirty = true
+	l.emitPaneEvent(apiproto.EventPaneClosed, pane)
 	l.broadcastState()
 	l.checkWaiters()
 	return ok(id, apiproto.PaneCloseResult{PaneID: pane.ID, Closed: true})
@@ -709,7 +730,7 @@ func (l *Loop) paneSendKeys(id string, p apiproto.PaneSendKeysParams) apiproto.R
 	// "send, then wait for done" correct: otherwise the wait can match the
 	// pane's leftover idle state and return before the agent even starts.
 	if p.Text != "" {
-		pane.AgentState = agentstatus.Working
+		l.setAgentState(pane, agentstatus.Working)
 		pane.Seen = pane.ID == l.app.focusedPane()
 		pane.LastOutput = time.Now()
 		pane.BusyUntil = time.Now().Add(sendGrace)

@@ -235,6 +235,102 @@ type ManagerSendResult struct {
 	Queued int    `json:"queued"`
 }
 
+// --- watch ---
+
+// Event kinds.
+const (
+	EventStatus     = "agent_status" // an agent changed what it is doing
+	EventPaneNew    = "pane_new"
+	EventPaneClosed = "pane_closed"
+	EventPaneExit   = "pane_exit" // the process ended
+	EventNotify     = "notify"    // an agent wants a human
+)
+
+// Event is one line of `rook watch` output.
+//
+// Deliberately flat: this is consumed by shell pipelines and other agents, so
+// every field is one jq hop away and there is nothing to walk into.
+type Event struct {
+	Kind     string `json:"kind"`
+	At       string `json:"at"`
+	Session  string `json:"session"`
+	PaneID   string `json:"pane_id,omitempty"`
+	Label    string `json:"label,omitempty"`
+	Agent    string `json:"agent,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Previous string `json:"previous,omitempty"`
+	Fan      string `json:"fan,omitempty"`
+	ExitCode *int   `json:"exit_code,omitempty"`
+}
+
+// WatchStarted acknowledges a stream before any events arrive.
+type WatchStarted struct {
+	Watching bool `json:"watching"`
+}
+
+// WatchParams filters the stream. Empty lists mean everything.
+type WatchParams struct {
+	Panes    []string `json:"panes,omitempty"`
+	Statuses []string `json:"statuses,omitempty"`
+	Kinds    []string `json:"kinds,omitempty"`
+}
+
+// --- fan ---
+
+// FanStartParams runs one prompt past several agents at once.
+type FanStartParams struct {
+	Prompt string   `json:"prompt"`
+	Agents int      `json:"agents,omitempty"` // default 3
+	Cmd    string   `json:"cmd,omitempty"`    // default "claude"
+	Args   []string `json:"args,omitempty"`
+	Name   string   `json:"name,omitempty"`
+	// Worktree gives each agent its own git checkout and branch, so they
+	// cannot fight over the index and their answers can be diffed.
+	Worktree bool `json:"worktree,omitempty"`
+	// Base is the commit-ish the branches start from; empty means current HEAD.
+	Base string `json:"base,omitempty"`
+}
+
+type FanPane struct {
+	PaneID      string `json:"pane_id"`
+	Fan         string `json:"fan,omitempty"`
+	Label       string `json:"label"`
+	Branch      string `json:"branch,omitempty"`
+	Worktree    string `json:"worktree,omitempty"`
+	Status      string `json:"status,omitempty"`
+	AgentStatus string `json:"agent_status,omitempty"`
+	// Diffstat is what the agent actually changed on disk.
+	Diffstat string `json:"diffstat,omitempty"`
+}
+
+type FanStartResult struct {
+	Fan    string    `json:"fan"`
+	Prompt string    `json:"prompt"`
+	Panes  []FanPane `json:"panes"`
+}
+
+type FanListParams struct {
+	Fan string `json:"fan,omitempty"`
+}
+
+type FanListResult struct {
+	Fans  []string  `json:"fans"`
+	Panes []FanPane `json:"panes"`
+}
+
+type FanCleanParams struct {
+	Fan string `json:"fan"`
+	// Force discards uncommitted work in the worktrees.
+	Force bool `json:"force,omitempty"`
+}
+
+type FanCleanResult struct {
+	Fan      string   `json:"fan"`
+	Closed   int      `json:"closed"`
+	Removed  int      `json:"removed"`
+	Problems []string `json:"problems,omitempty"`
+}
+
 // --- wait.pane ---
 
 // WaitPaneParams blocks until a pane reaches one of the wanted states, or

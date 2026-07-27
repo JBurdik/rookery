@@ -41,6 +41,10 @@ func main() {
 		err = cli.RunAPI(os.Args[2:])
 	case "wait":
 		err = cli.RunWait(os.Args[2:])
+	case "fan":
+		err = cli.RunFan(os.Args[2:])
+	case "watch":
+		err = cli.RunWatch(os.Args[2:])
 	case "manager":
 		err = cli.RunManager(os.Args[2:])
 	case "git":
@@ -86,6 +90,9 @@ Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait h
   rook pane focus|status|rename|kill <pane>       switch to / inspect / label / stop a pane
   rook wait agent-status <pane> --status done     block until an agent finishes
   rook wait exit <pane>                           block until a pane's process ends
+  rook fan "<task>" [--agents N]                  one prompt, N agents, one worktree each
+  rook fan ls|clean                               compare them / tidy up
+  rook watch [--status done,blocked]              stream agent state changes as NDJSON
   rook manager <request...>                       ask the manager agent to do it
   rook git                                        open a git UI (lazygit/gitui/tig) in a pane
   rook agents ls|show|init                        the rules that detect agent status

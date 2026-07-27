@@ -79,9 +79,18 @@ type App struct {
 	// managerAwaiting is set between asking the manager something and its turn
 	// ending, so only a reply to an actual question reaches the bar.
 	managerAwaiting bool
-	// managerQueue holds messages waiting for the manager to be ready — see
-	// pumpManager for why they cannot just be written out.
-	managerQueue []managerMsg
+	// nextFan numbers unnamed fan-out runs.
+	nextFan int
+
+	// Event streams (`rook watch`). watchDropped counts events discarded
+	// because a consumer was too slow, so it can be reported rather than
+	// hidden.
+	watchers     []*watcher
+	nextWatcher  uint64
+	watchDropped int
+	// sendQueue holds text waiting for a pane to be ready for input, keyed by
+	// pane id — see queueSend for why writing immediately does not work.
+	sendQueue map[string][]queuedSend
 
 	clients map[uint64]*attachClientConn
 	waiters []*waiter

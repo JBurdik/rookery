@@ -339,6 +339,71 @@ Both config files are written with their defaults on first run, so the file
 itself documents what can be changed. New actions added by a later build are
 merged into an existing file rather than overwriting your bindings.
 
+## Fan-out
+
+One prompt, several agents, one git checkout each:
+
+```bash
+rook fan "make the flaky auth test pass" --agents 3
+rook watch --status done,blocked      # tell me when they land
+rook fan ls                           # who did what
+git merge rook/fan1-2                 # keep the one you liked
+rook fan clean fan1 --force           # bin the rest
+```
+
+Each agent gets its own tab, its own worktree under
+`~/.local/state/rookery/worktrees`, and its own branch `rook/<name>-<n>`. Three
+agents on one task therefore cannot fight over the index, and comparing their
+answers is a diff rather than three transcripts.
+
+```
+fan1       w1:p2     done      rook/fan1-1   2 files changed, 31 insertions(+)
+fan1       w1:p3     blocked   rook/fan1-2   1 file changed, 4 insertions(+)
+fan1       w1:p4     done      rook/fan1-3   1 new file(s)
+```
+
+Untracked files are counted separately on purpose: `git diff` ignores them, so
+an agent whose whole contribution was a new file used to look like it had done
+nothing.
+
+`fan clean` is all-or-nothing. If any worktree has uncommitted work it removes
+nothing and says which — an earlier version closed the panes first and *then*
+refused, which left checkouts with no way back to them. `--force` discards.
+
+The prompt is **queued**, not typed immediately. An agent that has not finished
+starting loses whatever you send it, which is how a fan-out of five quietly
+becomes a fan-out of two; the queue drains one message per agent per idle turn.
+
+## Watching
+
+```bash
+rook watch                                   # NDJSON, one event per line
+rook watch --status done,blocked --plain     # human-readable
+rook watch --pane w1:p2 --kind agent_status
+```
+
+```
+12:50:45  w1:p1   one   pane_new
+12:50:45  w1:p1   one   working → idle
+12:50:47  w1:p1   one   idle → working
+12:50:50  w1:p1   one   working → idle
+```
+
+Events: `agent_status` (with `previous` → `status`), `pane_new`, `pane_closed`,
+`pane_exit`. Each line is flat JSON, so every field is one `jq` hop away:
+
+```bash
+rook watch --status blocked | while read -r ev; do
+  say "$(jq -r .label <<<"$ev") needs you"
+done
+```
+
+This exists to delete polling. An outer agent or a CI job can block on the
+moment an agent finishes instead of asking `pane ls` every second and hoping to
+catch it. Events are dropped rather than queued without bound if a consumer
+falls behind — a slow pipeline must never be able to stall the multiplexer, and
+the drop is counted rather than hidden.
+
 ## Sessions
 
 | Command | What it does |
