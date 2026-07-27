@@ -23,6 +23,11 @@ const (
 	// idleAfter is how long a pane running an unrecognised command must stay
 	// quiet before it counts as idle rather than working.
 	idleAfter = 900 * time.Millisecond
+	// reportTTL is how long an integration's report stays authoritative. Long
+	// enough to cover a slow turn, short enough that an agent killed mid-turn
+	// (its hooks never firing again) falls back to the detector rather than
+	// looking busy forever.
+	reportTTL = 10 * time.Minute
 	// blinkInterval is one half-cycle of the attention blink; blinkFor is how
 	// long a finished pane keeps blinking. Long enough to catch an eye that
 	// was elsewhere, short enough not to become wallpaper.
@@ -607,6 +612,14 @@ func (l *Loop) refreshRunningCommand(pane *Pane) bool {
 //   - Anything else is its own job: the process is the work, so recent output
 //     is the only signal available.
 func (l *Loop) evaluatePane(pane *Pane) agentstatus.State {
+	// An integration reporting for this pane is authoritative. Herdr draws the
+	// same line: when hooks are firing, the screen manifest is not consulted
+	// for that pane, because a hook on "the permission dialog opened" knows
+	// something no amount of reading the screen can be sure of.
+	if pane.Reported != "" && time.Since(pane.ReportedAt) < reportTTL {
+		return pane.Reported
+	}
+
 	in := agentstatus.Input{Title: pane.Grid.Title(), Bottom: pane.Grid.BottomLines(6)}
 
 	if pane.Agent != "" {

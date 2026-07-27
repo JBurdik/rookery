@@ -235,6 +235,27 @@ type ManagerSendResult struct {
 	Queued int    `json:"queued"`
 }
 
+// --- pane.report ---
+
+// PaneReportParams is an agent integration telling rookery what it is doing,
+// instead of leaving rookery to work it out from the screen.
+type PaneReportParams struct {
+	PaneID string `json:"pane_id,omitempty"`
+	// Status is idle, working or blocked. Empty clears the report and hands
+	// the pane back to screen detection.
+	Status string `json:"status"`
+	// SessionRef is the agent's own session identifier, kept for a future
+	// "resume this agent" — rookery only records it today.
+	SessionRef string `json:"session_ref,omitempty"`
+	// Agent names the integration, for diagnosis.
+	Agent string `json:"agent,omitempty"`
+}
+
+type PaneReportResult struct {
+	PaneID string `json:"pane_id"`
+	Status string `json:"status"`
+}
+
 // --- watch ---
 
 // Event kinds.

@@ -215,6 +215,61 @@ aren't typing into, so visibility is what "seen" means. Reading a pane over the
 API counts too, which is how one agent collecting a sibling's output stops that
 sibling from nagging you.
 
+### Integrations — letting agents report themselves
+
+Screen detection is a heuristic. An integration replaces it with facts:
+
+```bash
+rook integration status            # what is installed, which agents are on PATH
+rook integration install claude    # add the hooks
+rook integration uninstall claude
+```
+
+For Claude Code, its own hook events map exactly onto rookery's three states:
+
+| Hook | Status | Why |
+| --- | --- | --- |
+| `UserPromptSubmit` | working | a turn started |
+| `Stop`, `StopFailure` | idle | the turn ended |
+| `PermissionRequest` | blocked | waiting on you to allow something |
+| `Elicitation` | blocked | an MCP server wants input |
+| `Notification` | blocked | Claude Code raised a notification |
+| `SessionStart` | idle | it is up and waiting |
+
+`PermissionRequest` *is* blocked — no spinner to spot, no dialog wording to
+match, nothing to be fooled by. A fresh report wins over screen detection for
+that pane; if the reports stop (an agent killed mid-turn) rookery falls back to
+reading the screen rather than leaving the pane stuck busy.
+
+The installer merges into your existing `settings.json`: your own hooks are
+kept, running it twice does not duplicate anything, and uninstall removes only
+what rookery added. Verified against a copy of a real config with 26 hook
+entries across 10 events — install/uninstall round-trips byte-identical. A
+settings file it cannot parse is refused, not replaced.
+
+Under the hood it is one call, so any agent can report without an installer:
+
+```bash
+rook report --status blocked --agent myagent
+```
+
+### The agent skill
+
+```bash
+rook skill              # print it
+rook skill --install    # write it to ~/.claude/skills/rookery/SKILL.md
+```
+
+An agent dropped into a pane has the CLI on its PATH and `ROOK_ENV=1` in its
+environment, and no reason to think either matters. The skill is what turns
+"there is a rook binary here" into "I can hand this task to a sibling and wait
+for it" — how to spawn agents without stealing focus, how to wait instead of
+poll, how to fan a task out, and the etiquette of not killing panes it did not
+create.
+
+Same idea as Herdr's `SKILL.md`, and the same gate: it tells the agent to do
+nothing unless `ROOK_ENV=1`.
+
 ### Agent detection rules
 
 Status comes from prioritised rules in per-agent manifests, the way Herdr does

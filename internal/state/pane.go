@@ -50,6 +50,13 @@ type Pane struct {
 	// that reads as "finished already", which pings you for nothing and
 	// lets `wait --status done` return before the work even starts.
 	BusyUntil time.Time
+	// Reported is a status an agent integration told us directly, rather than
+	// one inferred from its screen. When fresh it wins: a hook firing on
+	// "permission dialog opened" is ground truth, where screen-scraping is a
+	// heuristic that can only ever approximate it.
+	Reported     agentstatus.State
+	ReportedAt   time.Time
+	AgentSession string
 	// Fan, Branch and Worktree tie a pane to a fan-out run: which group it
 	// belongs to, and the checkout its agent is working in.
 	Fan      string

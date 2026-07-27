@@ -41,6 +41,12 @@ func main() {
 		err = cli.RunAPI(os.Args[2:])
 	case "wait":
 		err = cli.RunWait(os.Args[2:])
+	case "report":
+		err = cli.RunReport(os.Args[2:])
+	case "integration":
+		err = cli.RunIntegration(os.Args[2:])
+	case "skill":
+		err = cli.RunSkill(os.Args[2:])
 	case "fan":
 		err = cli.RunFan(os.Args[2:])
 	case "watch":
@@ -95,6 +101,8 @@ Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait h
   rook watch [--status done,blocked]              stream agent state changes as NDJSON
   rook manager <request...>                       ask the manager agent to do it
   rook git                                        open a git UI (lazygit/gitui/tig) in a pane
+  rook integration install claude                 let the agent report its own status
+  rook skill --install                            teach agents to drive rookery
   rook agents ls|show|init                        the rules that detect agent status
   rook api <method> ['{json params}']             call any API method directly
 

@@ -285,6 +285,13 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			Bottom:      pane.Grid.BottomLines(6),
 		}), false
 
+	case "pane.report":
+		var p apiproto.PaneReportParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneReport(req.ID, p), false
+
 	case "fan.start":
 		var p apiproto.FanStartParams
 		if err := unmarshal(req.Params, &p); err != nil {
@@ -738,6 +745,43 @@ func (l *Loop) paneSendKeys(id string, p apiproto.PaneSendKeysParams) apiproto.R
 		l.broadcastState()
 	}
 	return ok(id, apiproto.PaneSendKeysResult{OK: true, BytesWritten: n})
+}
+
+// paneReport records what an agent integration says about itself.
+func (l *Loop) paneReport(id string, p apiproto.PaneReportParams) apiproto.Response {
+	pane := l.app.resolvePane(p.PaneID)
+	if pane == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID)
+	}
+	if p.SessionRef != "" {
+		pane.AgentSession = p.SessionRef
+	}
+	if p.Agent != "" && pane.Agent == "" {
+		// A pane whose command rookery does not recognise is still an agent if
+		// an integration is reporting for it.
+		pane.Agent = p.Agent
+	}
+
+	switch agentstatus.State(p.Status) {
+	case agentstatus.Idle, agentstatus.Working, agentstatus.Blocked:
+		pane.Reported = agentstatus.State(p.Status)
+		pane.ReportedAt = time.Now()
+		if pane.Reported == agentstatus.Working {
+			// A report of "working" is a firm one: drop the post-send grace,
+			// which exists only to cover the gap this report just closed.
+			pane.BusyUntil = time.Time{}
+		}
+		l.setAgentState(pane, pane.Reported)
+	case "":
+		pane.Reported, pane.ReportedAt = "", time.Time{}
+	default:
+		return errResp(id, apiproto.ErrInvalidParams, "status must be idle, working, blocked or empty")
+	}
+
+	l.app.dirty = true
+	l.broadcastState()
+	l.checkWaiters()
+	return ok(id, apiproto.PaneReportResult{PaneID: pane.ID, Status: p.Status})
 }
 
 func (l *Loop) paneRead(id string, p apiproto.PaneReadParams) apiproto.Response {
