@@ -247,6 +247,27 @@ what rookery added. Verified against a copy of a real config with 26 hook
 entries across 10 events — install/uninstall round-trips byte-identical. A
 settings file it cannot parse is refused, not replaced.
 
+#### Several configurations at once
+
+Having more than one live config is normal — a relocated config directory for
+work, another for personal, plus whatever the repo carries — and writing hooks
+into one the agent never loads is the worst outcome, because it reports success
+and changes nothing. So the default target is whatever the agent itself would
+load (`$CLAUDE_CONFIG_DIR` if set, else `~/.claude`), and `status` lists every
+config it can find with the active one marked:
+
+```bash
+rook integration status                              # every config found
+rook integration install claude                      # the active one
+rook integration install claude --config-dir ~/claude-personal
+rook integration install claude --project            # ./.claude/settings.json
+rook integration install claude --local              # ./.claude/settings.local.json
+rook integration install claude --settings /path/to/settings.json
+rook integration install claude --all                # every config found
+```
+
+`rook skill --install` takes the same flags.
+
 Under the hood it is one call, so any agent can report without an installer:
 
 ```bash
@@ -257,7 +278,9 @@ rook report --status blocked --agent myagent
 
 ```bash
 rook skill              # print it
-rook skill --install    # write it to ~/.claude/skills/rookery/SKILL.md
+rook skill --install    # write it into the config the agent actually loads
+rook skill --install --config-dir ~/claude-personal
+rook skill --install --all
 ```
 
 An agent dropped into a pane has the CLI on its PATH and `ROOK_ENV=1` in its

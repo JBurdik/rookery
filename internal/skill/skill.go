@@ -25,11 +25,11 @@ func Markdown() string {
 	return string(data)
 }
 
-// Targets are the places agents look for skills, given a home directory.
-func Targets(home string) map[string]string {
-	return map[string]string{
-		"claude": filepath.Join(home, ".claude", "skills", "rookery", "SKILL.md"),
-	}
+// PathIn returns where the skill file belongs inside an agent config
+// directory. Skills sit beside settings, so an agent with several config
+// directories needs the same targeting the integration installer has.
+func PathIn(configDir string) string {
+	return filepath.Join(configDir, "skills", "rookery", "SKILL.md")
 }
 
 // Install writes the skill file, overwriting any previous copy — it is

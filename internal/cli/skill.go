@@ -3,8 +3,9 @@ package cli
 import (
 	"fmt"
 	"os"
-	"sort"
+	"path/filepath"
 
+	"github.com/jirkab/rookery/internal/integration"
 	"github.com/jirkab/rookery/internal/skill"
 )
 
@@ -12,7 +13,9 @@ import (
 // file that teaches an agent to drive rookery from inside a pane.
 func RunSkill(args []string) error {
 	fs := newPaneFlags("skill")
-	install := fs.set.Bool("install", false, "write it into the agent skill directories")
+	install := fs.set.Bool("install", false, "write it into the agent's skill directory")
+	var target targetFlags
+	target.register(fs.set)
 	if err := fs.parse(args); err != nil {
 		return err
 	}
@@ -22,23 +25,22 @@ func RunSkill(args []string) error {
 		return nil
 	}
 
-	home, err := os.UserHomeDir()
+	// Skills live beside settings, so the same targeting applies: with several
+	// config directories, installing into the wrong one is silent.
+	spec := integration.Specs["claude"]
+	paths, err := target.resolve(spec)
 	if err != nil {
 		return err
 	}
-	targets := skill.Targets(home)
-	names := make([]string, 0, len(targets))
-	for name := range targets {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		path := targets[name]
+	for _, settings := range paths {
+		path := skill.PathIn(filepath.Dir(settings))
 		if err := skill.Install(path); err != nil {
 			return err
 		}
-		fmt.Printf("installed the rookery skill for %s: %s\n", name, path)
+		fmt.Printf("installed the rookery skill: %s\n", path)
+	}
+	if !target.all && spec.ConfigEnv != "" && os.Getenv(spec.ConfigEnv) != "" {
+		fmt.Printf("  (%s is set, so that is the config used; --all covers the others)\n", spec.ConfigEnv)
 	}
 	fmt.Println("\nagents started from now on will know how to drive rookery.")
 	return nil

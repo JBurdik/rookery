@@ -29,12 +29,22 @@ import (
 const marker = "# rookery-integration"
 
 // Spec describes one agent's integration.
+//
+// The settings *path* is deliberately not part of a Spec: an agent can have
+// several live configurations — a home directory, a relocated config dir, a
+// per-project one — and which to edit is the caller's decision, not ours.
 type Spec struct {
 	ID          string
 	Name        string
 	Description string
-	// SettingsPath returns the file to edit, given a home directory.
-	SettingsPath func(home string) string
+	// ConfigEnv is the environment variable that relocates this agent's config
+	// directory, if it has one.
+	ConfigEnv string
+	// ConfigDirName is the directory the agent keeps settings and skills in,
+	// relative to a home or project directory.
+	ConfigDirName string
+	// SettingsFile is the file inside that directory.
+	SettingsFile string
 	// Hooks maps a hook event to the status it reports.
 	Hooks []Hook
 }
@@ -53,12 +63,12 @@ type Hook struct {
 // inferred from a spinner or a dialog's wording, and neither can be fooled by
 // an agent that renders something unexpected.
 var claudeSpec = Spec{
-	ID:          "claude",
-	Name:        "Claude Code",
-	Description: "authoritative status from hooks, plus the session id for a future resume",
-	SettingsPath: func(home string) string {
-		return filepath.Join(home, ".claude", "settings.json")
-	},
+	ID:            "claude",
+	Name:          "Claude Code",
+	Description:   "authoritative status from hooks, plus the session id for a future resume",
+	ConfigEnv:     "CLAUDE_CONFIG_DIR",
+	ConfigDirName: ".claude",
+	SettingsFile:  "settings.json",
 	Hooks: []Hook{
 		{Event: "UserPromptSubmit", Status: "working", Why: "a turn started"},
 		{Event: "Stop", Status: "idle", Why: "the turn ended"},
@@ -85,6 +95,42 @@ func IDs() []string {
 	return out
 }
 
+// ConfigDirs lists every place this agent's configuration could live, most
+// likely first.
+//
+// Agents genuinely do have several at once — a relocated config directory for
+// work, another for personal, plus whatever is in the repo — so "install the
+// integration" has to be able to name which one. Guessing wrong is worse than
+// asking: it writes hooks into a config that is never loaded, and reports
+// success.
+func (s Spec) ConfigDirs(home, project string) []string {
+	var dirs []string
+	seen := map[string]bool{}
+	add := func(dir string) {
+		if dir == "" || seen[dir] {
+			return
+		}
+		seen[dir] = true
+		dirs = append(dirs, dir)
+	}
+
+	if s.ConfigEnv != "" {
+		add(os.Getenv(s.ConfigEnv))
+	}
+	if home != "" {
+		add(filepath.Join(home, s.ConfigDirName))
+	}
+	if project != "" {
+		add(filepath.Join(project, s.ConfigDirName))
+	}
+	return dirs
+}
+
+// SettingsIn returns the settings file inside a config directory.
+func (s Spec) SettingsIn(dir string) string {
+	return filepath.Join(dir, s.SettingsFile)
+}
+
 // Status reports whether an integration is installed.
 type Status struct {
 	ID        string `json:"id"`
@@ -101,12 +147,11 @@ type Status struct {
 // merges rather than writes: existing events are appended to, our own entries
 // are replaced rather than duplicated on a second run, and everything else is
 // left byte-for-byte alone.
-func Install(id, home, rookBin string) (Status, error) {
+func Install(id, path, rookBin string) (Status, error) {
 	spec, ok := Specs[id]
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q (have: %s)", id, strings.Join(IDs(), ", "))
 	}
-	path := spec.SettingsPath(home)
 
 	settings, err := readSettings(path)
 	if err != nil {
@@ -125,16 +170,15 @@ func Install(id, home, rookBin string) (Status, error) {
 	if err := writeSettings(path, settings); err != nil {
 		return Status{}, err
 	}
-	return StatusOf(id, home)
+	return StatusOf(id, path)
 }
 
 // Uninstall removes only the entries rookery added.
-func Uninstall(id, home string) (Status, error) {
+func Uninstall(id, path string) (Status, error) {
 	spec, ok := Specs[id]
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q", id)
 	}
-	path := spec.SettingsPath(home)
 
 	settings, err := readSettings(path)
 	if err != nil {
@@ -159,16 +203,15 @@ func Uninstall(id, home string) (Status, error) {
 	if err := writeSettings(path, settings); err != nil {
 		return Status{}, err
 	}
-	return StatusOf(id, home)
+	return StatusOf(id, path)
 }
 
-// StatusOf inspects what is currently installed.
-func StatusOf(id, home string) (Status, error) {
+// StatusOf inspects what is installed in one settings file.
+func StatusOf(id, path string) (Status, error) {
 	spec, ok := Specs[id]
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q", id)
 	}
-	path := spec.SettingsPath(home)
 	st := Status{ID: spec.ID, Name: spec.Name, Settings: path}
 
 	settings, err := readSettings(path)

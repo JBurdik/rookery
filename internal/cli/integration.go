@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/jirkab/rookery/internal/apiproto"
@@ -89,37 +90,78 @@ func RunIntegration(args []string) error {
 }
 
 func integrationStatus(args []string) error {
-	_ = args
-	home, err := os.UserHomeDir()
-	if err != nil {
+	fs := newPaneFlags("integration status")
+	var target targetFlags
+	target.register(fs.set)
+	if err := fs.parse(args); err != nil {
 		return err
 	}
+
 	type row struct {
 		integration.Status
-		Available bool `json:"available"`
+		ConfigDir string `json:"config_dir"`
+		Active    bool   `json:"active"`
+		Available bool   `json:"available"`
 	}
 	var out []row
+
 	for _, id := range integration.IDs() {
-		st, err := integration.StatusOf(id, home)
+		spec := integration.Specs[id]
+		_, lookErr := exec.LookPath(id)
+
+		// Report every configuration, not just the active one: with several
+		// live configs the useful question is *which* of them has it.
+		paths, err := target.resolve(spec)
 		if err != nil {
 			return err
 		}
-		_, lookErr := exec.LookPath(id)
-		out = append(out, row{Status: st, Available: lookErr == nil})
+		active := ""
+		if len(paths) > 0 {
+			active = paths[0]
+		}
+
+		dirs := candidates(spec)
+		if target.settings != "" || target.configDir != "" || target.project || target.local {
+			dirs = nil // an explicit target means only that one matters
+			for _, p := range paths {
+				dirs = append(dirs, filepath.Dir(p))
+			}
+		}
+		for _, dir := range dirs {
+			path := spec.SettingsIn(dir)
+			st, err := integration.StatusOf(id, path)
+			if err != nil {
+				return err
+			}
+			out = append(out, row{
+				Status:    st,
+				ConfigDir: dir,
+				Active:    path == active,
+				Available: lookErr == nil,
+			})
+		}
 	}
-	return printJSON(map[string]any{"integrations": out})
+	return printJSON(map[string]any{
+		"integrations": out,
+		"note": "active is the config the agent itself would load; " +
+			"target another with --config-dir, --project, --local or --settings",
+	})
 }
 
 func integrationChange(args []string, install bool) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: rook integration %s <%s>",
+	fs := newPaneFlags("integration install")
+	var target targetFlags
+	target.register(fs.set)
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	ids := fs.args()
+	if len(ids) == 0 {
+		return fmt.Errorf("usage: rook integration %s <%s> [--config-dir DIR]",
 			map[bool]string{true: "install", false: "uninstall"}[install],
 			strings.Join(integration.IDs(), "|"))
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
+
 	// The absolute path matters: hooks run with whatever environment the agent
 	// has, and "rook" may not be on it.
 	bin := "rook"
@@ -127,26 +169,36 @@ func integrationChange(args []string, install bool) error {
 		bin = exe
 	}
 
-	for _, id := range args {
-		if strings.HasPrefix(id, "-") {
-			continue
+	for _, id := range ids {
+		spec, known := integration.Specs[id]
+		if !known {
+			return fmt.Errorf("unknown integration %q (have: %s)", id, strings.Join(integration.IDs(), ", "))
 		}
-		var st integration.Status
-		if install {
-			st, err = integration.Install(id, home, bin)
-		} else {
-			st, err = integration.Uninstall(id, home)
-		}
+		paths, err := target.resolve(spec)
 		if err != nil {
 			return err
 		}
-		verb := "installed"
-		if !install {
-			verb = "removed"
+		for _, path := range paths {
+			var st integration.Status
+			if install {
+				st, err = integration.Install(id, path, bin)
+			} else {
+				st, err = integration.Uninstall(id, path)
+			}
+			if err != nil {
+				return err
+			}
+			verb := "installed"
+			if !install {
+				verb = "removed"
+			}
+			fmt.Printf("%s %s (%d hooks) in %s\n", verb, st.Name, st.Hooks, st.Settings)
+			if st.Note != "" {
+				fmt.Printf("  note: %s\n", st.Note)
+			}
 		}
-		fmt.Printf("%s %s (%d hooks) in %s\n", verb, st.Name, st.Hooks, st.Settings)
-		if st.Note != "" {
-			fmt.Printf("  note: %s\n", st.Note)
+		if install && spec.ConfigEnv != "" && os.Getenv(spec.ConfigEnv) != "" {
+			fmt.Printf("  (%s is set, so that is the config used; --all covers the others)\n", spec.ConfigEnv)
 		}
 	}
 	if install {
@@ -159,9 +211,22 @@ func integrationUsage() {
 	fmt.Fprint(os.Stderr, `rook integration — let agents report their own status
 
 Usage:
-  rook integration status              what is installed, and which agents are on PATH
+  rook integration status              what is installed, in every config found
   rook integration install claude      add the hooks
   rook integration uninstall claude    remove them
+
+Which configuration:
+  (default)              the one the agent itself would load — $CLAUDE_CONFIG_DIR
+                         if set, otherwise ~/.claude
+  --config-dir DIR       a specific config directory, e.g. ~/claude-personal
+  --project              ./.claude/settings.json, shared with the repo
+  --local                ./.claude/settings.local.json, gitignored
+  --settings FILE        an exact file
+  --all                  every config directory found
+
+Several live configurations is the normal case, and writing hooks into one the
+agent never loads is the worst outcome — it reports success and changes nothing.
+`+"`status`"+` therefore lists every config it can find and marks the active one.
 
 Without an integration, rookery works out what an agent is doing by reading its
 terminal title and the bottom of its screen. That is a good heuristic and it is
