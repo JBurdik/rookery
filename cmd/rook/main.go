@@ -1,0 +1,106 @@
+// Command mux is a terminal multiplexer for orchestrating coding agents: a
+// detachable daemon holds PTYs/agents alive, a Bubble Tea client attaches
+// and detaches at will, and agents drive the whole thing over a JSON-RPC
+// Unix socket.
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/jirkab/rookery/internal/cli"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		// Bare `rook`: attach to the default session, auto-starting a
+		// daemon if none is running yet — same ergonomics as Herdr's
+		// (and tmux's) bare invocation.
+		if err := cli.RunAttach(nil); err != nil {
+			fmt.Fprintln(os.Stderr, "rook:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	var err error
+	switch os.Args[1] {
+	case "serve":
+		err = cli.RunServe(os.Args[2:])
+	case "attach":
+		err = cli.RunAttach(os.Args[2:])
+	case "ls":
+		err = cli.RunLs(os.Args[2:])
+	case "pane":
+		err = cli.RunPane(os.Args[2:])
+	case "workspace", "ws":
+		err = cli.RunWorkspace(os.Args[2:])
+	case "tab":
+		err = cli.RunTab(os.Args[2:])
+	case "api":
+		err = cli.RunAPI(os.Args[2:])
+	case "wait":
+		err = cli.RunWait(os.Args[2:])
+	case "agents":
+		err = cli.RunAgents(os.Args[2:])
+	case "kill":
+		err = cli.RunKill(os.Args[2:])
+	case "ping":
+		err = cli.RunPing(os.Args[2:])
+	case "-h", "--help", "help":
+		usage()
+		return
+	default:
+		usage()
+		os.Exit(1)
+	}
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "rook:", err)
+		os.Exit(1)
+	}
+}
+
+func usage() {
+	fmt.Fprint(os.Stderr, `rookery — a terminal multiplexer for coding agents
+
+Humans:
+  rook                                            attach to the default session (auto-starts it)
+  rook serve [--session NAME] [--foreground|-f]   start (or run) the daemon
+  rook attach [session]                           attach a TUI to a session
+  rook ls                                         list sessions
+  rook kill [session]                             stop a session's daemon
+  rook ping [session]                             check daemon liveness
+
+Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait help`"+`:
+  rook workspace ls|new|focus|rename|close        one workspace per repo or task
+  rook tab ls|new|focus|rename|close              a layout of panes in a workspace
+  rook pane ls                                    list panes, with agent status
+  rook pane new [--label L] [-- cmd args...]      spawn a pane (splits the focused one)
+  rook pane send <pane> [text...]                 type into a pane, then Enter
+  rook pane read <pane> [--scrollback] [--raw]    read a pane's output
+  rook pane focus|status|rename|kill <pane>       switch to / inspect / label / stop a pane
+  rook wait agent-status <pane> --status done     block until an agent finishes
+  rook wait exit <pane>                           block until a pane's process ends
+  rook agents ls|show|init                        the rules that detect agent status
+  rook api <method> ['{json params}']             call any API method directly
+
+Agent status: working · blocked (wants input) · done (finished, unseen) ·
+idle (finished, seen) · unknown.
+
+In the TUI, ctrl+b then:
+  c new tab      v split right   - split down   z zoom       x close pane
+  h/j/k/l move   H/J/K/L resize  1-9 jump tab   n/p cycle    N new workspace
+  w/W workspace  b sidebar       g navigate     m mouse      ? help   q detach
+
+Mouse is on by default: click a pane, tab, workspace or agent, drag a divider.
+Shift+drag for your terminal's own text selection.
+
+Config lives in ~/.rook/config.json and ~/.rook/hotkeys.json; every binding
+above is remappable, prefix included.
+
+Session defaults to $ROOK_SESSION, else "default". Panes get ROOK_SESSION,
+ROOK_PANE, ROOK_TAB, ROOK_WORKSPACE and ROOK_ENV=1 in their environment, so an
+agent inside a pane can drive rookery with no configuration at all.
+`)
+}

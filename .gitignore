@@ -1,0 +1,8 @@
+# Build output. `go build -o rook ./cmd/rook` drops a ~6MB binary here.
+/rook
+/mux
+
+# Go
+*.test
+*.out
+/dist/

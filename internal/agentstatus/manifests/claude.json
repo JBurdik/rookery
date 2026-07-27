@@ -1,0 +1,23 @@
+{
+  "id": "claude",
+  "aliases": ["claude-code"],
+  "exec": ["claude"],
+  "description": "Claude Code. Verified against 2.1: the title cycles braille frames while working and settles on '✳ Claude Code'. Its working and idle screens are otherwise identical — same prompt box, same status line, same mode hints — so the title carries the state.",
+  "rules": [
+    {
+      "id": "shortcuts_hint",
+      "state": "idle",
+      "priority": 50,
+      "region": "bottom",
+      "contains": ["? for shortcuts"]
+    },
+    {
+      "id": "trust_prompt",
+      "state": "blocked",
+      "priority": 210,
+      "region": "bottom",
+      "contains": ["do you trust"],
+      "why": "the folder-trust question on first run in a new directory"
+    }
+  ]
+}

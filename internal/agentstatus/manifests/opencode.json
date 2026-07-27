@@ -1,0 +1,6 @@
+{
+  "id": "opencode",
+  "exec": ["opencode"],
+  "description": "Recognised by executable name; status comes from the shared generic rules.",
+  "rules": []
+}

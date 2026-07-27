@@ -1,0 +1,6 @@
+{
+  "id": "cursor-agent",
+  "exec": ["cursor-agent"],
+  "description": "Recognised by executable name; status comes from the shared generic rules.",
+  "rules": []
+}

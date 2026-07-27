@@ -1,0 +1,6 @@
+{
+  "id": "pi",
+  "exec": ["pi"],
+  "description": "Recognised by executable name; status comes from the shared generic rules.",
+  "rules": []
+}

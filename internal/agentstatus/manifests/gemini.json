@@ -1,0 +1,6 @@
+{
+  "id": "gemini",
+  "exec": ["gemini"],
+  "description": "Recognised by executable name; status comes from the shared generic rules.",
+  "rules": []
+}

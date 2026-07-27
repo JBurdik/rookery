@@ -1,0 +1,87 @@
+# Future plan (post-MVP, not scoped for v1)
+
+Ideas gathered from Herdr's fuller feature set and from `stablyai/orca` (open-source parallel-coding-agent ADE, desktop+mobile+VPS, 29.5k★) as inspiration. Nothing here blocks MVP — revisit once the core daemon/attach/API loop is stable and used daily.
+
+## From Orca
+
+- **Mobile companion** — API socket is already plain JSON-RPC over Unix socket; a phone client needs a relay (SSH-forwarded socket, or a small HTTPS bridge) plus push notifications on pane status change (`agent done`, `agent blocked`). Natural extension of `pane.status`, no protocol redesign.
+- **Parallel git worktrees** — fan one prompt across N agent panes, each in its own `git worktree`. Needs a `worktree.*` API namespace (`worktree.create`, `worktree.list`, `worktree.remove`), deliberately excluded from v1.
+- **SSH-native remote worktrees with auto-reconnect** — design is already Unix-socket-first; formalize a documented SSH port/socket-forward recipe, then add a reconnect-on-drop loop in the attach client.
+- **Notifications/unread state** — pane transitions (idle→done, idle→blocked) as OS notifications + an unread marker in the TUI tab bar.
+- **Quick open** — fuzzy search across panes/sessions/commands in the attach client.
+- **Account/usage tracking** — surface agent CLI rate-limit/usage info via `pane.status` if the wrapped agent CLI exposes it.
+- **Annotate AI diffs / review flow** — probably a separate companion tool, not core daemon scope.
+- **GUI client** — deferred on purpose; Orca proves "native-feeling wrapper around a terminal-heavy core" is a viable shape. Revisit toolkit choice (Wails/Tauri-style webview vs native SwiftUI) only once this comes up — the attach protocol is already structured-cell JSON so either approach can consume it without a redesign.
+
+## From Herdr (deferred method surface)
+
+- `workspace.*` / `tab.*` / `layout.*` — multi-workspace management, layout export/import, split-ratio persistence.
+- Plugin system (`plugin.*`) for third-party pane types.
+- Live-upgrade / handoff mechanism (Herdr's `handoff.rs`) — seamless daemon binary upgrade without dropping running PTYs, via FD passing to a new process.
+- Kitty graphics protocol / image passthrough in panes.
+
+## Open questions to revisit later
+
+- Multi-client differing terminal sizes (v1: last attacher's viewport wins — needs a real per-client viewport story if this becomes annoying).
+- Whether `internal/termgrid`'s `x/vt` dependency needs replacing once it stabilizes or if Bubble Tea v2 changes the calculus.
+
+## Deferred out of the splits/status/wait round (2026-07-27)
+
+- **Tabs and workspaces** (`w1:t1:p1`) — every pane is currently a split of one
+  screen, with `ctrl+b z` (zoom) as the pressure valve when that gets crowded.
+  This is the biggest remaining gap against Herdr.
+- **Mouse** — click to focus, drag a divider to resize.
+- **Layout persistence** across a daemon restart.
+- **Per-client viewports** — the daemon renders one composite frame at the last
+  attacher's size, so two clients with different terminal sizes share the
+  smaller experience.
+- **ANSI-aware truncation in the client** — frame lines are used at whatever
+  width the daemon rendered them; a resize can flicker for exactly one frame.
+- **Agent status rules as data** — `internal/agentstatus` holds them in a Go
+  table. Herdr ships per-agent TOML manifests with an update channel; move to
+  files if the rules start changing faster than the binary does.
+
+## Deferred out of the Herdr-parity round (2026-07-27)
+
+Shipped in that round: workspaces → tabs → panes, mouse (click/drag/scroll +
+forwarding), agents-only sidebar panel with unread markers, `prefix ?` help,
+and `~/.rook/{config,hotkeys}.json`.
+
+Still missing against Herdr:
+
+- **Copy mode** (`prefix+[`) and drag-to-select-and-copy. Needs a selection
+  model over the grid plus clipboard integration.
+- **Right-click context menus** on panes, tabs and workspaces.
+- **Real scrollback viewport.** A wheel in a pane that hasn't requested mouse
+  reporting currently sends arrow keys; scrolling a history buffer needs a
+  per-pane viewport offset the renderer honours.
+- **Layout persistence** across a daemon restart (Herdr's session-state).
+- **Swap panes** (`prefix+shift+hjkl`) and a resize *mode* rather than
+  one-shot resize keys.
+- **Goto picker** (`prefix+g` is currently sidebar navigation, not a fuzzy
+  finder over everything).
+- **Per-client viewports** — one composite frame is rendered at the last
+  attacher's size, so two clients with different terminal sizes share the
+  smaller one.
+- **Plugins, git worktrees, OS notifications, mobile client.**
+
+## Agent manifests (2026-07-27)
+
+Status rules now live in per-agent JSON manifests (`internal/agentstatus/
+manifests/*.json`, embedded; overridable from `~/.rook/agents/`). Chosen over
+Herdr's TOML because the rest of rookery's config is JSON and encoding/json is
+stdlib.
+
+Still missing versus Herdr's manifest system:
+- **An update channel.** Herdr ships `manifest_update.rs` so rules can be
+  refreshed without shipping a binary. Ours are only updated by a release or a
+  hand-edited file.
+- **`min_engine_version` / versioned manifests.** No compatibility gate, so a
+  future rule field would be silently ignored by an older binary.
+- **Richer regions.** Herdr has `after_last_horizontal_rule`, `whole_recent`,
+  `osc_title`, `bottom_non_empty_lines(N)` with an argument; ours has `title`
+  and `bottom` (fixed at 6 lines).
+- **`skip_state_update` / `visible_blocker` flags**, which let a rule suppress
+  a verdict rather than produce one (Herdr uses this for transcript viewers).
+- **Per-agent integrations** — reading an agent's own session files rather than
+  scraping its screen.
