@@ -44,13 +44,14 @@ type palette struct {
 	popoverKey     lipgloss.Style
 	popoverMuted   lipgloss.Style
 
-	tabActive   lipgloss.Style
-	tabInactive lipgloss.Style
-	divider     lipgloss.Style
-	sidebarEdge lipgloss.Style
-	help        lipgloss.Style
-	errorStyle  lipgloss.Style
-	alert       lipgloss.Style
+	tabActive    lipgloss.Style
+	tabInactive  lipgloss.Style
+	divider      lipgloss.Style
+	sidebarEdge  lipgloss.Style
+	help         lipgloss.Style
+	errorStyle   lipgloss.Style
+	alert        lipgloss.Style
+	managerReply lipgloss.Style
 
 	// status maps an agent status to its colour, in sidebar and tab flavours.
 	status    map[string]lipgloss.Style
@@ -86,10 +87,11 @@ func newPalette(c config.Colors) palette {
 		// The sidebar's own edge is drawn with the panel background on one
 		// side and the terminal's on the other, so it reads as the boundary
 		// of a panel rather than as a stray character.
-		sidebarEdge: lipgloss.NewStyle().Foreground(col(c.SidebarBG)).Background(lipgloss.Color(c.Border)),
-		help:        lipgloss.NewStyle().Foreground(col(c.Muted)),
-		errorStyle:  lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
-		alert:       lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
+		sidebarEdge:  lipgloss.NewStyle().Foreground(col(c.SidebarBG)).Background(lipgloss.Color(c.Border)),
+		help:         lipgloss.NewStyle().Foreground(col(c.Muted)),
+		errorStyle:   lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
+		alert:        lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
+		managerReply: lipgloss.NewStyle().Foreground(col(c.Accent)).Bold(true),
 	}
 	p.status = map[string]lipgloss.Style{
 		"working": bg.Foreground(col(c.Working)),

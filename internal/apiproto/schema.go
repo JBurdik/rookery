@@ -228,6 +228,13 @@ type ManagerSendParams struct {
 	Cmd string `json:"cmd,omitempty"`
 }
 
+// ManagerSendResult reports where the request went and how many are still
+// queued ahead of it.
+type ManagerSendResult struct {
+	PaneID string `json:"pane_id"`
+	Queued int    `json:"queued"`
+}
+
 // --- wait.pane ---
 
 // WaitPaneParams blocks until a pane reaches one of the wanted states, or

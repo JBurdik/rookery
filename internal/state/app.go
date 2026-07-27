@@ -76,6 +76,12 @@ type App struct {
 	blinkOn bool
 	// managerCmd is the agent the manager bar starts, from the client's config.
 	managerCmd string
+	// managerAwaiting is set between asking the manager something and its turn
+	// ending, so only a reply to an actual question reaches the bar.
+	managerAwaiting bool
+	// managerQueue holds messages waiting for the manager to be ready — see
+	// pumpManager for why they cannot just be written out.
+	managerQueue []managerMsg
 
 	clients map[uint64]*attachClientConn
 	waiters []*waiter

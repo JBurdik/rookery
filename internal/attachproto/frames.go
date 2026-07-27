@@ -27,6 +27,9 @@ const (
 	// The daemon needs it to decide between a sound (you are here) and an OS
 	// notification (you are somewhere else entirely).
 	TypeClientFocus = "client_focus"
+	// TypeManagerReply carries the manager agent's answer back to the command
+	// bar it was asked from.
+	TypeManagerReply = "manager_reply"
 )
 
 // Action names a client -> server UI command that needs no payload beyond a
@@ -286,6 +289,12 @@ type Notify struct {
 	Title  string `json:"title,omitempty"`
 }
 
+// ManagerReply is the manager agent's answer, for the command bar.
+type ManagerReply struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 // ErrorFrame reports a problem to the client.
 type ErrorFrame struct {
 	Type    string `json:"type"`
@@ -315,6 +324,7 @@ type ServerMsg struct {
 	ExitCode        int                `json:"exit_code,omitempty"`
 	Message         string             `json:"message,omitempty"`
 	Version         string             `json:"version,omitempty"`
+	Text            string             `json:"text,omitempty"`
 	Kind            string             `json:"kind,omitempty"`
 	Agent           string             `json:"agent,omitempty"`
 	Title           string             `json:"title,omitempty"`

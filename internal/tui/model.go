@@ -497,6 +497,9 @@ func (m *model) handleServerMsg(msg attachproto.ServerMsg) (tea.Model, tea.Cmd) 
 			Type: msg.Type, PaneID: msg.PaneID, Cols: msg.Cols, Rows: msg.Rows,
 			ANSI: msg.ANSI, CursorX: msg.CursorX, CursorY: msg.CursorY, Revision: msg.Revision,
 		}
+	case attachproto.TypeManagerReply:
+		m.statusMsg = m.p.managerReply.Render(m.icons.Agent+" ") + msg.Text
+
 	case attachproto.TypeNotify:
 		// The daemon already played any system sound; the bell has to come
 		// from here, because it is this process that owns the terminal.

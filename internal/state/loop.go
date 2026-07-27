@@ -204,6 +204,7 @@ func (l *Loop) Run() {
 			}
 		case <-status.C:
 			l.refreshAgentStatus()
+			l.pumpManager()
 			l.expireWaiters()
 		case <-frames.C:
 			l.flushFrame()
@@ -677,6 +678,9 @@ func (l *Loop) refreshAgentStatus() {
 		switch {
 		case next == agentstatus.Idle && pane.AgentState != agentstatus.Unknown:
 			pane.DoneAt = time.Now()
+			if pane.Manager {
+				l.managerReplied(pane)
+			}
 			// A turn just ended. If the pane wasn't on screen, that result is
 			// unseen — which is exactly what "done" means.
 			_, onScreen := visible[pane.ID]

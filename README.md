@@ -157,6 +157,9 @@ manager: split a pane and run the tests, tell me if they fail▌
 
 `rook manager <request...>` does the same from a shell.
 
+Its answer comes back to the same bar, so a one-line question needs no trip to
+the manager's tab. Longer answers are there in full.
+
 The manager is started on first use and briefed once: it is told it lives
 inside rookery and given the commands that matter (`rook pane new`,
 `pane send`, `pane read`, `wait agent-status`). Nothing about it is special
@@ -164,6 +167,19 @@ beyond rookery remembering which pane it is — it has the same CLI and the same
 permissions as any agent you start yourself. It opens in its own tab and does
 not steal focus, so asking it something never rearranges what you were
 looking at.
+
+Two things about typing at an agent that took measuring to get right, and which
+`rook pane send` now does for every pane, not just the manager:
+
+- **The Enter is a separate keypress**, 150ms after the text. Agent TUIs detect
+  pastes by how bytes arrive: text and its carriage return in one write look
+  like pasted content, so the CR lands *in* the composer as a newline and
+  nothing is submitted.
+- **Messages queue until the agent is ready.** A freshly spawned agent shows no
+  "working" marker while its UI is still coming up, so it looks idle — and text
+  typed into a composer that does not exist yet is simply lost. The manager
+  drains one message per idle turn, which also stops two messages arriving
+  concatenated.
 
 ```json
 { "ui": { "manager_cmd": "claude" } }

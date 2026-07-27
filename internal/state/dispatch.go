@@ -21,6 +21,11 @@ const defaultCols, defaultRows = 80, 24
 // redraw, short enough that a no-op prompt settles quickly.
 const sendGrace = 2 * time.Second
 
+// enterDelay separates typed text from the Enter that submits it. Long enough
+// that an agent's paste detection sees two events rather than one chunk, short
+// enough to feel instant.
+const enterDelay = 150 * time.Millisecond
+
 // defaultShell is what a pane runs when no command is given.
 func defaultShell() string {
 	if sh := os.Getenv("SHELL"); sh != "" {
@@ -674,13 +679,29 @@ func (l *Loop) paneSendKeys(id string, p apiproto.PaneSendKeysParams) apiproto.R
 		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID)
 	}
 
-	data := []byte(p.Text)
-	if p.PressEnter {
-		data = append(data, '\r')
-	}
-	n, err := pane.Actor.Write(data)
+	n, err := pane.Actor.Write([]byte(p.Text))
 	if err != nil {
 		return errResp(id, apiproto.ErrInternal, err.Error())
+	}
+	if p.PressEnter {
+		// The Enter goes in a *separate* write, a beat later.
+		//
+		// Agent TUIs detect pastes by how the bytes arrive: text and its
+		// carriage return in one chunk look like pasted content, so the CR
+		// becomes a newline inside the input box and nothing is submitted.
+		// This is exactly what left a briefing and a prompt sitting unsent in
+		// Claude Code's composer. Writing the CR on its own, after a pause,
+		// reads as a keypress.
+		//
+		// Written from a goroutine because the caller is the daemon's single
+		// event loop and must never sleep; Actor.Write is mutex-guarded, so
+		// this is safe from outside the loop.
+		actor := pane.Actor
+		go func() {
+			time.Sleep(enterDelay)
+			_, _ = actor.Write([]byte("\r"))
+		}()
+		n++
 	}
 
 	// Sending a prompt means work is starting. Marking the pane busy here,
