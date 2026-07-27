@@ -106,9 +106,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Type: attachproto.TypeHello, Session: m.session,
 				Cols: m.paneCols(), Rows: m.paneRows(),
 				Icons: m.cfg.UI.Icons, Spinner: m.cfg.UI.Spinner,
-				Accent:   m.cfg.UI.Colors.Accent,
-				HeaderFG: m.cfg.UI.Colors.HeaderFG,
-				Border:   m.cfg.UI.Colors.Border,
+				Accent:       m.cfg.UI.Colors.Accent,
+				HeaderFG:     m.cfg.UI.Colors.HeaderFG,
+				Border:       m.cfg.UI.Colors.Border,
+				SpinnerColor: m.cfg.UI.Colors.Spinner,
+				Borders:      m.cfg.UI.PaneBorders,
 			})
 		} else {
 			m.send(attachproto.Resize{Type: attachproto.TypeResize, Cols: m.paneCols(), Rows: m.paneRows()})
@@ -201,6 +203,8 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case config.ActionHelp:
 		m.helpMode = true
+	case config.ActionGit:
+		m.act(attachproto.ActionGit, "", "")
 	case config.ActionLiteralPrefix:
 		// prefix prefix sends the prefix key through, so a nested
 		// multiplexer or a readline user isn't locked out.

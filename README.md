@@ -82,9 +82,12 @@ Glyphs come from a theme, set in `config.json`:
 { "ui": { "icons": "nerd", "spinner": "dots" } }
 ```
 
-`icons` is `nerd` (default, needs a Nerd Font), `unicode`, or `ascii`. The Nerd
+`icons` is `unicode` (default — plain symbols that render in any font at a
+predictable width), `nerd` (needs a Nerd Font installed), or `ascii`. The Nerd
 Font glyphs were picked by reading the cmap of 0xProto Nerd Font Mono rather
-than from a cheat sheet, so they are all present and all exactly one cell wide.
+than from a cheat sheet, so they are all present and all exactly one cell wide
+— but a font-independent default is the safer one, and the extra icons were
+mostly decoration next to the status glyph that carries the meaning.
 
 `spinner` is `dots` (default), `braille`, `bar`, `shade`, `line` or `pulse`.
 The default is quadrant blocks `▖▘▝▗` rather than the familiar braille
@@ -97,6 +100,36 @@ The animation frame is derived from the wall clock on both sides, which is how
 the pane headers (drawn by the daemon) and the sidebar (drawn by the client)
 stay in step without exchanging a single message about it. The clock only runs
 while something is actually working.
+
+### Pane borders
+
+```json
+{ "ui": { "pane_borders": "auto" } }
+```
+
+`auto` (default) boxes each pane once more than one shares a tab, `always` even
+boxes a lone one, `never` falls back to a single header row per pane.
+
+```
+╭ 1 ▶ Refactor the parser ──────╮ ╭ 2 ! tests ───────────────────╮
+│ ✳ Cogitating… (12s · esc to   │ │ Run failing test again? (y/n)│
+│                               │ ╰──────────────────────────────╯
+```
+
+The title lives in the top edge, so a box costs one row rather than two, and
+the focused pane's border is drawn in the accent colour — a far clearer "you
+are here" than a bold header. A lone pane gets no box: there is nothing to
+separate it from, and the two columns are better spent on content.
+
+### Git
+
+`prefix G` opens a git UI in a new pane, in the active workspace's directory —
+whichever of `lazygit`, `gitui` or `tig` you have, falling back to a shell with
+`git status` already printed. `rook git` does the same from a script.
+
+rookery deliberately does not implement its own git UI. lazygit is better than
+anything a multiplexer would grow on the side, and a pane is exactly the right
+place to put it.
 
 ### Colours
 

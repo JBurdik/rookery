@@ -76,7 +76,7 @@ func handleConn(conn net.Conn, loop *state.Loop) {
 	loop.NotifyAttachConnect(id, send, hello.Cols, hello.Rows, state.ClientTheme{
 		Icons: hello.Icons, Spinner: hello.Spinner,
 		Accent: hello.Accent, HeaderFG: hello.HeaderFG, Border: hello.Border,
-		SpinnerColor: hello.SpinnerColor,
+		SpinnerColor: hello.SpinnerColor, Borders: hello.Borders,
 	})
 
 	for {

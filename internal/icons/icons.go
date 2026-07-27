@@ -83,12 +83,13 @@ var themes = map[string]Set{
 	},
 }
 
-// For returns a theme by name, falling back to Nerd Font glyphs.
+// For returns a theme by name, falling back to plain Unicode — the set that
+// renders in any font, which is the safer default when a name is unknown.
 func For(theme string) Set {
 	if s, ok := themes[theme]; ok {
 		return s
 	}
-	return themes[ThemeNerd]
+	return themes[ThemeUnicode]
 }
 
 // Spinner frame sets, keyed by the name used in config.json.

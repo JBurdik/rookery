@@ -280,6 +280,9 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			Bottom:      pane.Grid.BottomLines(6),
 		}), false
 
+	case "pane.git":
+		return l.openGitTool(), false
+
 	case "wait.pane":
 		var p apiproto.WaitPaneParams
 		if err := unmarshal(req.Params, &p); err != nil {
@@ -804,7 +807,8 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 			l.focusPane(paneID)
 		}
 		rect := rects[paneID]
-		content := paneContentRect(rect, len(rects) > 1)
+		withBorder := l.bordersOn(len(rects))
+		content := paneContentRect(rect, !withBorder && len(rects) > 1, withBorder)
 		l.forwardMouse(pane, m, m.X-content.X+1, m.Y-content.Y+1)
 		return
 	}

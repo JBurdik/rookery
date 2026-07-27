@@ -47,6 +47,7 @@ type palette struct {
 	tabActive   lipgloss.Style
 	tabInactive lipgloss.Style
 	divider     lipgloss.Style
+	sidebarEdge lipgloss.Style
 	help        lipgloss.Style
 	errorStyle  lipgloss.Style
 	alert       lipgloss.Style
@@ -82,6 +83,10 @@ func newPalette(c config.Colors) palette {
 		tabActive:   lipgloss.NewStyle().Foreground(col(c.BadgeFG)).Background(col(c.Accent)).Bold(true),
 		tabInactive: lipgloss.NewStyle().Foreground(col(c.Muted)),
 		divider:     lipgloss.NewStyle().Foreground(col(c.Border)),
+		// The sidebar's own edge is drawn with the panel background on one
+		// side and the terminal's on the other, so it reads as the boundary
+		// of a panel rather than as a stray character.
+		sidebarEdge: lipgloss.NewStyle().Foreground(col(c.SidebarBG)).Background(lipgloss.Color(c.Border)),
 		help:        lipgloss.NewStyle().Foreground(col(c.Muted)),
 		errorStyle:  lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
 		alert:       lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
@@ -334,7 +339,7 @@ func (m *model) sidebarAgentLine(rowStyle, glyphStyle lipgloss.Style, gutter, gl
 	return rowStyle.Render(" "+gutter) +
 		glyphStyle.Render(glyph) +
 		rowStyle.Render(clampPad(" "+title, max(inner-prefixWidth, 0))) +
-		m.p.divider.Render("│")
+		m.p.sidebarEdge.Render("▏")
 }
 
 // sidebarLineWith renders a row with an already-styled fragment (a badge)
@@ -346,7 +351,7 @@ func (m *model) sidebarAgentLine(rowStyle, glyphStyle lipgloss.Style, gutter, gl
 func (m *model) sidebarLineWith(style lipgloss.Style, text, right string) string {
 	inner := m.sidebarWidth() - 1
 	avail := max(inner-lipgloss.Width(right), 0)
-	return style.Render(clampPad(" "+text, avail)) + right + m.p.divider.Render("│")
+	return style.Render(clampPad(" "+text, avail)) + right + m.p.sidebarEdge.Render("▏")
 }
 
 // clampPad forces plain (unstyled) text to exactly w columns.
@@ -496,6 +501,7 @@ var helpRight = []helpEntry{
 	{config.ActionPrevWorkspace, "prev workspace"},
 	{config.ActionCloseWorkspce, "close workspace"},
 	{"", "view"},
+	{config.ActionGit, "git UI in a pane"},
 	{config.ActionToggleSidebar, "toggle sidebar"},
 	{config.ActionFocusSidebar, "sidebar navigation"},
 }

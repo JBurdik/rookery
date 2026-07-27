@@ -6,6 +6,7 @@
 package state
 
 import (
+	"os/exec"
 	"time"
 
 	"github.com/jirkab/rookery/internal/agentstatus"
@@ -49,6 +50,8 @@ type ClientTheme struct {
 	HeaderFG     string
 	Border       string
 	SpinnerColor string
+	// Borders is the pane-box mode: auto, always or never.
+	Borders string
 }
 
 type attachConnectMsg struct {
@@ -260,6 +263,9 @@ func (l *Loop) handleAttachConnect(m attachConnectMsg) {
 	l.app.headerFG = termgrid.ParseColor(m.theme.HeaderFG, l.app.headerFG)
 	l.app.borderFG = termgrid.ParseColor(m.theme.Border, l.app.borderFG)
 	l.app.spinnerFG = termgrid.ParseColor(m.theme.SpinnerColor, l.app.spinnerFG)
+	if m.theme.Borders != "" {
+		l.app.borders = m.theme.Borders
+	}
 	l.app.dirty = true
 
 	send(m.send, attachproto.HelloAck{Type: attachproto.TypeHelloAck, Session: l.app.Session, Version: l.version})
@@ -337,6 +343,8 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 			t.Name = m.text
 			l.broadcastState()
 		}
+	case attachproto.ActionGit:
+		resp = l.openGitTool()
 	case attachproto.ActionNewWorkspace:
 		resp = l.workspaceCreate("attach", apiproto.WorkspaceCreateParams{Name: m.text})
 	case attachproto.ActionFocusWS:
@@ -449,6 +457,40 @@ func (l *Loop) cycleWorkspace(delta int) {
 		}
 	}
 	l.focusWorkspace(l.app.workspaces[(cur+delta+len(l.app.workspaces))%len(l.app.workspaces)].ID)
+}
+
+// gitTools are the terminal git UIs worth opening, best first. Spawning one of
+// these beats building a git UI into rookery: they already exist, they are
+// better than anything a multiplexer would grow on the side, and a pane is
+// exactly the right place to put one.
+var gitTools = [][]string{
+	{"lazygit"},
+	{"gitui"},
+	{"tig"},
+	// Last resort: a shell in the repo with the status already printed, which
+	// is at least a working starting point.
+	{"sh", "-c", "git status && exec ${SHELL:-/bin/sh}"},
+}
+
+// openGitTool opens a git UI in a new pane, in the active workspace's
+// directory — the repo you are looking at, not wherever the daemon started.
+func (l *Loop) openGitTool() apiproto.Response {
+	cwd := ""
+	if w := l.app.activeWorkspace(); w != nil {
+		cwd = w.Cwd
+	}
+	for _, argv := range gitTools {
+		if _, err := exec.LookPath(argv[0]); err != nil {
+			continue
+		}
+		return l.paneCreate("git", apiproto.PaneCreateParams{
+			Cmd:   argv[0],
+			Args:  argv[1:],
+			Cwd:   cwd,
+			Label: "git",
+		})
+	}
+	return errResp("git", apiproto.ErrInternal, "no git UI found (install lazygit, gitui or tig)")
 }
 
 func (l *Loop) sendError(clientID uint64, message string) {

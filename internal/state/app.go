@@ -63,6 +63,9 @@ type App struct {
 	headerFG  termgrid.Color
 	borderFG  termgrid.Color
 	spinnerFG termgrid.Color
+	// borders is the pane-box mode the attached client asked for: auto,
+	// always or never.
+	borders string
 
 	clients map[uint64]*attachClientConn
 	waiters []*waiter
@@ -81,6 +84,7 @@ func newApp(session string) *App {
 		headerFG:  244,
 		borderFG:  238,
 		spinnerFG: 208,
+		borders:   BordersAuto,
 	}
 }
 

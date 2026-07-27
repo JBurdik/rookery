@@ -41,6 +41,8 @@ func main() {
 		err = cli.RunAPI(os.Args[2:])
 	case "wait":
 		err = cli.RunWait(os.Args[2:])
+	case "git":
+		err = cli.RunGit(os.Args[2:])
 	case "agents":
 		err = cli.RunAgents(os.Args[2:])
 	case "kill":
@@ -82,6 +84,7 @@ Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait h
   rook pane focus|status|rename|kill <pane>       switch to / inspect / label / stop a pane
   rook wait agent-status <pane> --status done     block until an agent finishes
   rook wait exit <pane>                           block until a pane's process ends
+  rook git                                        open a git UI (lazygit/gitui/tig) in a pane
   rook agents ls|show|init                        the rules that detect agent status
   rook api <method> ['{json params}']             call any API method directly
 
@@ -92,6 +95,7 @@ In the TUI, ctrl+b then:
   c new tab      v split right   - split down   z zoom       x close pane
   h/j/k/l move   H/J/K/L resize  1-9 jump tab   n/p cycle    N new workspace
   w/W workspace  b sidebar       g navigate     m mouse      ? help   q detach
+  G git UI
 
 Mouse is on by default: click a pane, tab, workspace or agent, drag a divider.
 Shift+drag for your terminal's own text selection.

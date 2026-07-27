@@ -51,9 +51,9 @@ type UI struct {
 	// default: that panel answers "which agent needs me", and a shell that
 	// is simply sitting at a prompt is noise in that list.
 	ShowTerminalsInAgents bool `json:"show_terminals_in_agents"`
-	// Icons selects the glyph set: "nerd" (a Nerd Font is installed),
-	// "unicode" (no Nerd Font, but box drawing and symbols are fine), or
-	// "ascii".
+	// Icons selects the glyph set: "unicode" (the default — plain symbols that
+	// render in any font at a predictable width), "nerd" (a Nerd Font is
+	// installed), or "ascii".
 	Icons string `json:"icons"`
 	// Spinner animates a working agent. "dots" is the default because it is
 	// quadrant blocks, which every font has; "braille" is the familiar
@@ -61,6 +61,9 @@ type UI struct {
 	// falls back to another font and can sit at the wrong width.
 	// One of: dots, braille, bar, shade, line, pulse.
 	Spinner string `json:"spinner"`
+	// PaneBorders draws a box around each pane, with its title in the top
+	// edge: "auto" (once more than one pane shares a tab), "always", "never".
+	PaneBorders string `json:"pane_borders"`
 	// Colors is the palette; anything left out keeps its default.
 	Colors Colors `json:"colors"`
 	// Sound pings you when an agent finishes or gets stuck.
@@ -102,6 +105,7 @@ const (
 	ActionToggleMouse   = "toggle_mouse"
 	ActionDetach        = "detach"
 	ActionHelp          = "help"
+	ActionGit           = "git"
 	ActionLiteralPrefix = "literal_prefix"
 )
 
@@ -112,8 +116,9 @@ func DefaultConfig() Config {
 		SidebarVisible:        true,
 		SidebarWidth:          22,
 		ShowTerminalsInAgents: false,
-		Icons:                 icons.ThemeNerd,
+		Icons:                 icons.ThemeUnicode,
 		Spinner:               "dots",
+		PaneBorders:           "auto",
 		Colors:                DefaultColors(),
 		Sound:                 notify.DefaultConfig(),
 	}}
@@ -152,6 +157,7 @@ func DefaultHotkeys() Hotkeys {
 			ActionToggleMouse:   {"m"},
 			ActionDetach:        {"q", "d"},
 			ActionHelp:          {"?"},
+			ActionGit:           {"G"},
 			ActionLiteralPrefix: {"ctrl+b"},
 		},
 	}
@@ -176,10 +182,13 @@ func Load() (Config, Hotkeys, error) {
 		cfg.UI.SidebarWidth = 12
 	}
 	if cfg.UI.Icons == "" {
-		cfg.UI.Icons = icons.ThemeNerd
+		cfg.UI.Icons = icons.ThemeUnicode
 	}
 	if cfg.UI.Spinner == "" {
 		cfg.UI.Spinner = "dots"
+	}
+	if cfg.UI.PaneBorders == "" {
+		cfg.UI.PaneBorders = "auto"
 	}
 	cfg.UI.Colors = cfg.UI.Colors.merge()
 	if cfg.UI.Sound.Mode == "" {

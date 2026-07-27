@@ -41,6 +41,7 @@ const (
 	ActionPrevWS       = "prev_workspace"
 	ActionCloseWS      = "close_workspace"
 	ActionRenameWS     = "rename_workspace"
+	ActionGit          = "git"
 )
 
 // Hello is the client's opening frame.
@@ -61,6 +62,8 @@ type Hello struct {
 	HeaderFG     string `json:"header_fg,omitempty"`
 	Border       string `json:"border,omitempty"`
 	SpinnerColor string `json:"spinner_color,omitempty"`
+	// Borders selects pane boxes: "auto", "always" or "never".
+	Borders string `json:"borders,omitempty"`
 }
 
 // HelloAck acknowledges attach. The state that follows carries everything
@@ -323,6 +326,7 @@ type Incoming struct {
 	HeaderFG     string `json:"header_fg,omitempty"`
 	Border       string `json:"border,omitempty"`
 	SpinnerColor string `json:"spinner_color,omitempty"`
+	Borders      string `json:"borders,omitempty"`
 	Alt          bool   `json:"alt,omitempty"`
 	Ctrl         bool   `json:"ctrl,omitempty"`
 	Shift        bool   `json:"shift,omitempty"`

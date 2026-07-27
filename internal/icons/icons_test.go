@@ -93,8 +93,13 @@ func TestStatus(t *testing.T) {
 	}
 }
 
-func TestForFallsBackToNerd(t *testing.T) {
-	if For("nonexistent").Done != themes[ThemeNerd].Done {
-		t.Error("unknown theme should fall back to the Nerd Font set")
+// TestForFallsBackToUnicode: an unknown theme name must land on the set that
+// renders in any font, not one that needs a Nerd Font installed.
+func TestForFallsBackToUnicode(t *testing.T) {
+	if For("nonexistent").Done != themes[ThemeUnicode].Done {
+		t.Error("unknown theme should fall back to the Unicode set")
+	}
+	if For("").Done != themes[ThemeUnicode].Done {
+		t.Error("empty theme name should fall back to the Unicode set")
 	}
 }

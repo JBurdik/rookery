@@ -22,6 +22,12 @@ func TestLoadWritesDefaults(t *testing.T) {
 	if cfg.UI.ShowTerminalsInAgents {
 		t.Error("plain terminals should stay out of the agents panel by default")
 	}
+	if cfg.UI.Icons != "unicode" {
+		t.Errorf("icons default = %q, want unicode — it renders in any font", cfg.UI.Icons)
+	}
+	if cfg.UI.PaneBorders != "auto" {
+		t.Errorf("pane_borders default = %q, want auto", cfg.UI.PaneBorders)
+	}
 	if keys.Prefix != "ctrl+b" {
 		t.Errorf("prefix = %q, want ctrl+b", keys.Prefix)
 	}
@@ -54,6 +60,9 @@ func TestLoadMergesNewActions(t *testing.T) {
 	}
 	if got := keys.Bindings[ActionNewTab]; !slices.Equal(got, []string{"t"}) {
 		t.Errorf("user binding overwritten: %v", got)
+	}
+	if len(keys.Bindings[ActionGit]) == 0 {
+		t.Error("the git binding was not filled in from defaults")
 	}
 	if len(keys.Bindings[ActionZoom]) == 0 {
 		t.Error("action missing from the user's file was not filled in from defaults")

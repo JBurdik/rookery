@@ -107,6 +107,17 @@ func tabNew(args []string) error {
 	return callAndPrint(fs.session, "tab.create", params)
 }
 
+// RunGit implements `rook git` — open a git UI in a pane, in the active
+// workspace's directory. The daemon picks the tool, since its PATH is the one
+// that matters.
+func RunGit(args []string) error {
+	fs := newPaneFlags("git")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	return callAndPrint(fs.session, "pane.git", nil)
+}
+
 // --- shared helpers ---
 
 func simpleCall(args []string, method string, params any) error {

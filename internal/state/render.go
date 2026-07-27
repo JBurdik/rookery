@@ -17,6 +17,15 @@ func (l *Loop) dividerCell() termgrid.Cell {
 	return termgrid.Cell{Char: ' ', FG: l.app.borderFG, BG: termgrid.DefaultBG}
 }
 
+// borderCell is a pane's box edge: accent for the focused pane, the border
+// colour for the rest.
+func (l *Loop) borderCell(focused bool) termgrid.Cell {
+	if focused {
+		return termgrid.Cell{Char: ' ', FG: l.app.accent, BG: termgrid.DefaultBG}
+	}
+	return termgrid.Cell{Char: ' ', FG: l.app.borderFG, BG: termgrid.DefaultBG}
+}
+
 func (l *Loop) headerCell(focused bool) termgrid.Cell {
 	if focused {
 		return termgrid.Cell{Char: ' ', FG: l.app.accent, BG: termgrid.DefaultBG, Mode: 4 /*bold*/}
@@ -37,9 +46,34 @@ func (l *Loop) statusGlyph(p *Pane) string {
 	return l.app.icons.Status(string(p.agentStatus()), p.Status == "exited", l.app.spinner, time.Now())
 }
 
+// Border modes, as written in config.json.
+const (
+	BordersAuto   = "auto"   // a box per pane once more than one shares the tab
+	BordersAlways = "always" // even a lone pane gets one
+	BordersNever  = "never"  // the old single header row instead
+)
+
+// bordersOn decides whether to draw pane boxes for the current layout.
+func (l *Loop) bordersOn(paneCount int) bool {
+	switch l.app.borders {
+	case BordersAlways:
+		return true
+	case BordersNever:
+		return false
+	default:
+		// A lone pane needs no box: there is nothing to separate it from, and
+		// the two columns and two rows are better spent on content.
+		return paneCount > 1
+	}
+}
+
 // paneContentRect is the area inside a pane's rectangle that the terminal
-// itself gets: the rectangle minus its header row.
-func paneContentRect(r Rect, withHeader bool) Rect {
+// itself gets. A bordered pane loses a cell on every side; an unbordered one
+// with a header loses just the header row.
+func paneContentRect(r Rect, withHeader, withBorder bool) Rect {
+	if withBorder {
+		return Rect{X: r.X + 1, Y: r.Y + 1, W: max(r.W-2, 1), H: max(r.H-2, 1)}
+	}
 	if !withHeader {
 		return r
 	}
@@ -59,10 +93,13 @@ func (l *Loop) buildFrame() attachproto.Frame {
 	}
 
 	rects := l.app.rects()
-	withHeader := len(rects) > 1
+	withBorder := l.bordersOn(len(rects))
+	withHeader := !withBorder && len(rects) > 1
 
 	// Dividers first, so pane content painted next always wins on overlap.
-	if !tab.zoom {
+	// Bordered panes need none: their own edges already separate them, and
+	// drawing both would put three lines of chrome between two terminals.
+	if !tab.zoom && !withBorder {
 		for _, d := range tab.layout.Dividers(area) {
 			ch := '│'
 			if d.Dir == dirVertical {
@@ -85,11 +122,14 @@ func (l *Loop) buildFrame() attachproto.Frame {
 		if pane == nil {
 			continue
 		}
-		content := paneContentRect(rect, withHeader)
+		content := paneContentRect(rect, withHeader, withBorder)
 		l.resizePane(pane, content.W, content.H)
 
 		focused := id == focus
-		if withHeader {
+		switch {
+		case withBorder:
+			l.drawPaneBorder(canvas, rect, pane, i+1, focused)
+		case withHeader:
 			l.drawPaneHeader(canvas, rect, pane, i+1, focused)
 		}
 		canvas.Blit(pane.Grid.Snapshot(focused), content.X, content.Y)
@@ -110,6 +150,74 @@ func (l *Loop) buildFrame() attachproto.Frame {
 		CursorY:  cursorY,
 		Revision: l.frameRevision(),
 	}
+}
+
+// drawPaneBorder boxes a pane and writes its title into the top edge:
+//
+//	╭─ 1 ▶ claude ─────────╮
+//	│                      │
+//	╰──────────────────────╯
+//
+// The focused pane's box is drawn in the accent colour, which is a far
+// clearer "you are here" than a bold header was — and putting the title in
+// the top edge means the box costs one row rather than two.
+func (l *Loop) drawPaneBorder(canvas *termgrid.Canvas, rect Rect, pane *Pane, index int, focused bool) {
+	if rect.W < 2 || rect.H < 2 {
+		return
+	}
+	edge := l.borderCell(focused)
+
+	horizontal := func(y int, left, right rune) {
+		cell := edge
+		cell.Char = left
+		canvas.Set(rect.X, y, cell)
+		cell.Char = '─'
+		canvas.Fill(rect.X+1, y, rect.W-2, 1, cell)
+		cell.Char = right
+		canvas.Set(rect.X+rect.W-1, y, cell)
+	}
+	horizontal(rect.Y, '╭', '╮')
+	horizontal(rect.Y+rect.H-1, '╰', '╯')
+
+	cell := edge
+	cell.Char = '│'
+	canvas.Fill(rect.X, rect.Y+1, 1, rect.H-2, cell)
+	canvas.Fill(rect.X+rect.W-1, rect.Y+1, 1, rect.H-2, cell)
+
+	l.drawPaneTitle(canvas, rect, pane, index, focused, edge)
+}
+
+// drawPaneTitle writes "─ 1 ▶ claude ─" into a border's top edge, with the
+// status glyph in its own colour so an animating spinner still stands out.
+func (l *Loop) drawPaneTitle(canvas *termgrid.Canvas, rect Rect, pane *Pane, index int, focused bool, edge termgrid.Cell) {
+	prefix := " " + string(rune('0'+index%10)) + " "
+	glyph := l.statusGlyph(pane)
+	name := " " + pane.displayName()
+	if pane.Status == "exited" {
+		name += " [exited]"
+	}
+	// Everything must fit between the corners, with a dash of edge left over
+	// so the title reads as part of the border rather than replacing it.
+	budget := rect.W - 4 - len([]rune(prefix)) - len([]rune(glyph))
+	if budget < 1 {
+		return
+	}
+	name = truncate(name, budget) + " "
+
+	text := l.headerCell(focused)
+	text.BG = edge.BG
+	glyphStyle := text
+	if pane.agentStatus() == agentstatus.Working {
+		glyphStyle.FG = l.app.spinnerFG
+		glyphStyle.Mode |= 4 // bold
+	}
+
+	x := rect.X + 1
+	canvas.DrawText(x, rect.Y, prefix, text)
+	x += len([]rune(prefix))
+	canvas.DrawText(x, rect.Y, glyph, glyphStyle)
+	x += len([]rune(glyph))
+	canvas.DrawText(x, rect.Y, name, text)
 }
 
 // drawPaneHeader writes "1 ▶ claude" across the top row of a pane's rect,
