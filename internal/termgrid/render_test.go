@@ -3,6 +3,8 @@ package termgrid
 import (
 	"strings"
 	"testing"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // TestRenderANSIFrameInvariants pins the two properties a Bubble Tea View
@@ -39,6 +41,19 @@ func TestRenderANSIFrameInvariants(t *testing.T) {
 
 	if !strings.Contains(out, "hello") || !strings.Contains(out, "third line") {
 		t.Errorf("frame lost pane content: %q", out)
+	}
+}
+
+// TestRenderANSIWideRuneColumns pins the display-width invariant: a row
+// containing a double-width rune must still occupy exactly W columns, or the
+// pane border drawn to its right shifts over by one.
+func TestRenderANSIWideRuneColumns(t *testing.T) {
+	c := NewCanvas(6, 1)
+	c.DrawText(0, 0, "a😄bcde", Cell{FG: DefaultFG, BG: DefaultBG})
+
+	plain := string(stripANSI([]byte(c.RenderANSI())))
+	if got := runewidth.StringWidth(plain); got != 6 {
+		t.Errorf("row rendered %d columns, want 6: %q", got, plain)
 	}
 }
 

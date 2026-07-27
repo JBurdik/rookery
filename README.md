@@ -52,10 +52,16 @@ right and down. Ids say where something lives: `w1`, `w1:t2`, `w1:p3`.
   ! tests            │                              │
 ```
 
-Two sidebar panels, split half and half: the workspaces you could be in (with
-their git branch) stay at the top, the agents inside them are pinned to the
-bottom, grouped by workspace — so the agent list growing doesn't shove the
-workspaces around. A `•` in the gutter marks an unread result.
+Two sidebar panels, split half and half and divided by a rule: the workspaces
+you could be in (with their git branch) stay at the top, the agents inside them
+are pinned to the bottom, grouped by workspace — so the agent list growing
+doesn't shove the workspaces around. A `•` in the gutter marks an unread result.
+
+The selected workspace and the focused agent are marked with a full-width band
+rather than by colouring their text, and the band covers a workspace's branch
+line too so a two-line entry reads as one block. It replaced an underline,
+which at this size read as a stray rule under the text rather than as "you are
+here". The colour is `colors.selection_bg`.
 
 A workspace **follows the directory you are in**: `cd` somewhere else and its
 name and git branch change with it (`~` at home). Name one yourself with
@@ -114,6 +120,28 @@ the pane headers (drawn by the daemon) and the sidebar (drawn by the client)
 stay in step without exchanging a single message about it. The clock only runs
 while something is actually working.
 
+### Dim text
+
+Agent TUIs draw everything they don't want read as content in faint — SGR 2:
+Claude Code's input placeholder, its hints, the quiet half of a diff. The
+emulator underneath rookery tracks no faint attribute at all, so all of that
+arrived looking exactly like text you had typed yourself.
+
+Faint now rides in on the one attribute bit the emulator does keep and nothing
+here uses (blink) and is translated back to SGR 2 on the way out, so your
+terminal does the dimming — which is the only way to get it right, since faint
+is a blend towards the background rather than a fixed grey. A program that
+genuinely wants blinking text gets faint text instead; nothing in a pane has
+ever asked.
+
+Measured, not assumed: `internal/termgrid/testdata/claude-welcome.raw` is a real
+capture of Claude Code v2.1.220 writing to a PTY — 17 requests for faint, 21
+`SGR 22`s clearing it — and the test replays it at five chunk sizes. That is
+what caught the second bug: the emulator keeps no state for a multi-byte
+character split across two writes, so a `╭` straddling a read boundary was lost
+along with the rest of its box. A byte-at-a-time replay used to lose 7 of 32 dim
+cells; now every chunk size renders identically.
+
 ### Pane borders
 
 ```json
@@ -160,18 +188,25 @@ visible pane is inside its blink window.
 
 ### The manager bar
 
-`prefix :` (or `prefix a`) opens a one-line prompt at the bottom. Type what you
-want and it goes to a **manager agent** — an ordinary pane running your agent
-of choice, in its own tab, with rookery's CLI on its PATH:
+A row above the status line, always on screen. `prefix :` (or `prefix a`, or a
+click on the bar) puts the cursor in it; type what you want and it goes to a
+**manager agent** — an ordinary pane running your agent of choice, in its own
+tab, with rookery's CLI on its PATH:
 
 ```
-manager: split a pane and run the tests, tell me if they fail▌
+◆ ❯ split a pane and run the tests, tell me if they fail▌
 ```
 
 `rook manager <request...>` does the same from a shell.
 
-Its answer comes back to the same bar, so a one-line question needs no trip to
-the manager's tab. Longer answers are there in full.
+The bar spins while the manager is thinking, then holds its answer until the
+manager says something else — so a one-line question needs no trip to the
+manager's tab, and the reply is not overwritten by the next status message.
+Longer answers are in the tab in full.
+
+It costs one permanent row of pane height. That is deliberate: a bar that
+existed only while you typed at it made every answer look like a status message
+that had already scrolled away.
 
 The manager is started on first use and briefed once: it is told it lives
 inside rookery and given the commands that matter (`rook pane new`,
@@ -388,7 +423,8 @@ seen. That is what makes "which of my agents wants me?" answerable at a glance.
 Mouse capture is on by default, the way Herdr ships it. Click a pane to focus
 it, a tab or workspace to switch, an agent in the sidebar to jump straight to
 it wherever it lives. Drag a divider to resize. Scroll to page through
-history.
+history. Right-click a tab to rename it — the same prompt `prefix T` opens, on
+the tab you clicked rather than the active one.
 
 Panes whose program asked for mouse reporting — Claude Code, vim, anything
 full-screen — get the events forwarded SGR-encoded in pane-local coordinates

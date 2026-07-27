@@ -17,9 +17,14 @@ import (
 // say. Modelled on Herdr's layout — the sidebar is where you read state, and
 // the terminal itself keeps almost all of the screen.
 const (
-	headerRows  = 1
+	headerRows = 1
+	// managerRows is the always-visible manager bar. It costs one row of pane
+	// forever, which is the point: the manager is the thing you talk to most,
+	// and a bar that only exists while you type at it made its answer look
+	// like a status message that had already scrolled away.
+	managerRows = 1
 	statusRows  = 1
-	chromeRows  = headerRows + statusRows
+	chromeRows  = headerRows + managerRows + statusRows
 	minPaneCols = 20
 )
 
@@ -34,8 +39,12 @@ type palette struct {
 	sidebarActive  lipgloss.Style
 	sidebarCursor  lipgloss.Style
 	sidebarBranch  lipgloss.Style
-	badge          lipgloss.Style
-	spinner        lipgloss.Style
+	sidebarRule    lipgloss.Style
+	// selectionBG is applied on top of whatever style a row already has, so a
+	// selected row keeps its status colour and gains a band.
+	selectionBG lipgloss.Color
+	badge       lipgloss.Style
+	spinner     lipgloss.Style
 
 	popoverBG      lipgloss.Style
 	popoverBorder  lipgloss.Style
@@ -52,6 +61,8 @@ type palette struct {
 	errorStyle   lipgloss.Style
 	alert        lipgloss.Style
 	managerReply lipgloss.Style
+	managerInput lipgloss.Style
+	managerSpin  lipgloss.Style
 
 	// status maps an agent status to its colour, in sidebar and tab flavours.
 	status    map[string]lipgloss.Style
@@ -69,10 +80,15 @@ func newPalette(c config.Colors) palette {
 		sidebarItem:    bg.Foreground(col(c.Text)),
 		sidebarMuted:   bg.Foreground(col(c.Muted)),
 		sidebarActive:  bg.Foreground(col(c.Accent)).Bold(true),
-		sidebarCursor:  bg.Foreground(col(c.Accent)).Bold(true).Reverse(true),
-		sidebarBranch:  bg.Foreground(col(c.Idle)).Italic(true),
-		badge:          lipgloss.NewStyle().Foreground(col(c.BadgeFG)).Background(col(c.BadgeBG)).Bold(true),
-		spinner:        bg.Foreground(col(c.Spinner)).Bold(true),
+		// The cursor is the selection band plus a bold accent, not reverse
+		// video: reverse fights the band, and on a row that already carries a
+		// status colour it inverts that colour into the background.
+		sidebarCursor: lipgloss.NewStyle().Background(col(c.SelectionBG)).Foreground(col(c.Accent)).Bold(true),
+		sidebarBranch: bg.Foreground(col(c.Idle)),
+		sidebarRule:   bg.Foreground(col(c.Border)),
+		selectionBG:   col(c.SelectionBG),
+		badge:         lipgloss.NewStyle().Foreground(col(c.BadgeFG)).Background(col(c.BadgeBG)).Bold(true),
+		spinner:       bg.Foreground(col(c.Spinner)).Bold(true),
 
 		popoverBG:      pop.Foreground(col(c.Text)),
 		popoverBorder:  pop.Foreground(col(c.Accent)),
@@ -92,6 +108,8 @@ func newPalette(c config.Colors) palette {
 		errorStyle:   lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
 		alert:        lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
 		managerReply: lipgloss.NewStyle().Foreground(col(c.Accent)).Bold(true),
+		managerInput: lipgloss.NewStyle().Foreground(col(c.Text)),
+		managerSpin:  lipgloss.NewStyle().Foreground(col(c.Spinner)).Bold(true),
 	}
 	p.status = map[string]lipgloss.Style{
 		"working": bg.Foreground(col(c.Working)),
@@ -105,6 +123,12 @@ func newPalette(c config.Colors) palette {
 		"done":    lipgloss.NewStyle().Foreground(col(c.Done)).Bold(true),
 	}
 	return p
+}
+
+// band puts the selection background behind a row without touching its
+// foreground, so a selected agent keeps the colour of its status.
+func (p palette) band(style lipgloss.Style) lipgloss.Style {
+	return style.Background(p.selectionBG)
 }
 
 // sidebarRow records what a rendered sidebar line points at, so a click can
@@ -126,6 +150,9 @@ func (m *model) statusGlyph(status, paneStatus string) string {
 // anyWorking reports whether something on screen is animating, which is the
 // only time the client needs a repaint clock of its own.
 func (m *model) anyWorking() bool {
+	if m.managerBusy {
+		return true
+	}
 	for _, a := range m.state.Agents {
 		if a.Status == "working" {
 			return true
@@ -241,8 +268,13 @@ func (m *model) renderSidebar(rows int) []string {
 		// repo glyph: the dot already says "this is a workspace, this is the
 		// one you are in", and a second icon on every row is noise.
 		marker := m.icons.Idle
+		branch := m.p.sidebarBranch
 		if w.ID == m.state.ActiveWorkspace {
 			style, marker = m.p.sidebarActive, m.icons.Unread
+			// The band covers the branch row too, so a two-line entry reads as
+			// one selected block rather than a highlighted line with an
+			// unrelated line stuck under it.
+			style, branch = m.p.band(style), m.p.band(branch)
 		}
 		if m.navMode && m.navIndex == len(m.sidebarRows) {
 			style = m.p.sidebarCursor
@@ -252,8 +284,10 @@ func (m *model) renderSidebar(rows int) []string {
 		m.sidebarRows = append(m.sidebarRows, sidebarRow{kind: "workspace", target: w.ID})
 		if w.Branch != "" {
 			// The branch is context for the line above it, not a row you can
-			// click, so it gets no hit target of its own.
-			lines = append(lines, m.sidebarLine(m.p.sidebarBranch, "  "+m.icons.Branch+" "+w.Branch))
+			// click, so it gets no hit target of its own. It is indented to sit
+			// under the name, with no glyph of its own: at this size a second
+			// symbol per entry is what makes a sidebar look busy.
+			lines = append(lines, m.sidebarLine(branch, "  "+w.Branch))
 			m.sidebarRows = append(m.sidebarRows, sidebarRow{})
 		}
 	}
@@ -276,8 +310,14 @@ func (m *model) renderSidebar(rows int) []string {
 		blank()
 	}
 
+	// A rule where the two panels meet. The half-and-half split alone left the
+	// agents heading floating in the same field of blank rows as the
+	// workspaces, so the sidebar read as one long list with a gap in it.
+	lines = append(lines, m.sidebarRule())
+	m.sidebarRows = append(m.sidebarRows, sidebarRow{})
+
 	lines = append(lines, m.sidebarLineWith(m.p.sidebarHeading,
-		m.icons.Agent+" agents", m.badge(m.unreadTotal())))
+		"agents", m.badge(m.unreadTotal())))
 	m.sidebarRows = append(m.sidebarRows, sidebarRow{})
 
 	if len(m.state.Agents) == 0 {
@@ -295,11 +335,14 @@ func (m *model) renderSidebar(rows int) []string {
 		if s, ok := m.p.status[a.Status]; ok {
 			style = s
 		}
-		if a.PaneID == m.state.Focus {
-			style = style.Underline(true)
+		// A band, not an underline: an underline in a sidebar row reads as a
+		// stray rule under the text rather than as "this one".
+		selected := a.PaneID == m.state.Focus
+		if selected {
+			style = m.p.band(style)
 		}
 		if m.navMode && m.navIndex == len(m.sidebarRows) {
-			style = m.p.sidebarCursor
+			style, selected = m.p.sidebarCursor, true
 		}
 		// An unread result gets a bullet in the left gutter: the whole point
 		// of "done" as a separate state is that it is visible at a glance.
@@ -308,10 +351,15 @@ func (m *model) renderSidebar(rows int) []string {
 			gutter = m.icons.Unread
 		}
 		// The spinner is drawn in its own colour so the one moving thing on
-		// screen is also the one thing that stands out.
+		// screen is also the one thing that stands out. Its background has to
+		// follow the row's, or a selected working agent gets a one-cell notch
+		// punched in its band.
 		glyphStyle := style
 		if a.Status == "working" {
 			glyphStyle = m.p.spinner
+			if selected {
+				glyphStyle = m.p.band(glyphStyle)
+			}
 		}
 		lines = append(lines, m.sidebarAgentLine(style, glyphStyle, gutter,
 			m.statusGlyph(a.Status, ""), a.Title))
@@ -323,6 +371,40 @@ func (m *model) renderSidebar(rows int) []string {
 		m.sidebarRows = append(m.sidebarRows, sidebarRow{})
 	}
 	return lines[:rows]
+}
+
+// renderManagerBar draws the manager's own row, directly above the status line:
+// the input when you are typing at it, its last answer when you are not, a
+// spinner while it is thinking, and otherwise the key that focuses it.
+//
+// The answer stays until the manager says something else. It deliberately does
+// not share the status row: status messages are overwritten by the next
+// keypress, and an answer you asked for should not vanish that way.
+func (m *model) renderManagerBar() string {
+	prefix := " " + m.icons.Agent + " "
+	avail := max(m.width-lipgloss.Width(prefix), 0)
+	label := m.p.managerReply.Render(prefix)
+
+	switch {
+	case m.managerFocused():
+		return label + m.p.managerInput.Render(clampPad("❯ "+m.promptText+"▌", avail))
+	case m.managerBusy:
+		return label + m.p.managerSpin.Render(m.statusGlyph("working", "")) +
+			m.p.help.Render(clampPad(" thinking…", max(avail-1, 0)))
+	case m.managerReply != "":
+		return label + m.p.managerReply.Render(clampPad(m.managerReply, avail))
+	default:
+		keys := strings.Join(m.keys.KeysFor(config.ActionManager), " ")
+		return label + m.p.help.Render(clampPad("❯ ask the manager — "+m.keys.Prefix+" "+keys+", or click here", avail))
+	}
+}
+
+// sidebarRule draws the horizontal line between the two panels, in the same
+// colour as the sidebar's own edge so the panel reads as a box being divided
+// rather than as a row of dashes.
+func (m *model) sidebarRule() string {
+	inner := max(m.sidebarWidth()-1, 0)
+	return m.p.sidebarRule.Render(strings.Repeat("─", inner)) + m.p.sidebarEdge.Render("▏")
 }
 
 // sidebarLine renders one full-width sidebar row plus the divider column.
@@ -504,7 +586,7 @@ var helpRight = []helpEntry{
 	{config.ActionCloseWorkspce, "close workspace"},
 	{"", "view"},
 	{config.ActionGit, "git UI in a pane"},
-	{config.ActionManager, "ask the manager agent"},
+	{config.ActionManager, "type at the manager"},
 	{config.ActionToggleSidebar, "toggle sidebar"},
 	{config.ActionFocusSidebar, "sidebar navigation"},
 }

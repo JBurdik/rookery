@@ -33,6 +33,10 @@ type Grid struct {
 	scroll    []string        // completed lines, oldest first
 	pending   strings.Builder // current (not yet newline-terminated) line
 	maxScroll int
+
+	// escTail holds an escape sequence split across two PTY reads — see
+	// faint.go.
+	escTail []byte
 }
 
 const defaultScrollbackLines = 2000
@@ -56,6 +60,7 @@ func New(cols, rows int) *Grid {
 func (g *Grid) Write(p []byte) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	p = g.rewriteFaint(p)
 	g.term.Write(p)
 	g.appendTranscript(p)
 	g.dirty = true

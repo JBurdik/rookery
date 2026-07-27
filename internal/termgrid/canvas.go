@@ -3,6 +3,8 @@ package termgrid
 import (
 	"strconv"
 	"strings"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // Color is a terminal colour: 0-7 basic, 8-15 bright, 16-255 palette, and
@@ -123,6 +125,9 @@ func (c *Canvas) Fill(x0, y0, w, h int, cell Cell) {
 // RenderANSI serialises the canvas to exactly H lines joined by "\n", with no
 // carriage returns and no absolute cursor positioning — see the Grid.RenderANSI
 // doc comment for why both of those are non-negotiable.
+//
+// Every row also has to be exactly W *display* columns, or the chrome to the
+// right of a pane lands a column off.
 func (c *Canvas) RenderANSI() string {
 	var b strings.Builder
 	b.Grow(c.W * c.H * 2)
@@ -131,17 +136,27 @@ func (c *Canvas) RenderANSI() string {
 		first := true
 		var lastFG, lastBG Color
 		var lastMode int16
-		for x := range c.W {
+		for x := 0; x < c.W; x++ {
 			cell := c.At(x, y)
 			if first || cell.FG != lastFG || cell.BG != lastBG || cell.Mode != lastMode {
 				b.WriteString(sgr(cell.FG, cell.BG, cell.Mode))
 				lastFG, lastBG, lastMode = cell.FG, cell.BG, cell.Mode
 				first = false
 			}
-			if cell.Char == 0 {
-				b.WriteByte(' ')
-			} else {
-				b.WriteRune(cell.Char)
+			ch := cell.Char
+			if ch == 0 {
+				ch = ' '
+			}
+			b.WriteRune(ch)
+			// ponytail: the emulator has no wide-rune support — it stores a
+			// double-width rune (emoji, CJK) in a single cell and advances one
+			// column, so the real terminal draws that row one column too wide
+			// and pushes the pane's right border out of line. Charge the extra
+			// column to the next cell instead. Cost: the character after an
+			// emoji is dropped — almost always the space the program put there.
+			// Upgrade path is a wide-char-aware emulator.
+			if runewidth.RuneWidth(ch) == 2 {
+				x++
 			}
 		}
 		b.WriteString("\x1b[0m")
@@ -181,7 +196,9 @@ func sgr(fg, bg Color, mode int16) string {
 		codes = append(codes, "4")
 	}
 	if mode&attrBlink != 0 {
-		codes = append(codes, "5")
+		// Faint, not blink: the blink bit is what faint rides in on, because
+		// vt10x tracks no faint of its own. See faint.go.
+		codes = append(codes, "2")
 	}
 	if mode&attrReverse != 0 {
 		codes = append(codes, "7")

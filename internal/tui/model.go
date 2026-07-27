@@ -53,6 +53,12 @@ type model struct {
 	sidebarHidden bool
 	mouseOn       bool
 
+	// The manager bar's own state. managerReply is the last thing it said and
+	// stays on screen until it says something else; managerBusy runs the
+	// spinner between asking and being answered.
+	managerReply string
+	managerBusy  bool
+
 	// Hit-test tables, rebuilt every render so a click can be resolved
 	// against exactly what is on screen right now.
 	sidebarRows []sidebarRow
@@ -219,7 +225,7 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 	case config.ActionGit:
 		m.act(attachproto.ActionGit, "", "")
 	case config.ActionManager:
-		m.startPrompt("manager", attachproto.ActionManager, "")
+		m.focusManager()
 	case config.ActionLiteralPrefix:
 		// prefix prefix sends the prefix key through, so a nested
 		// multiplexer or a readline user isn't locked out.
@@ -339,10 +345,20 @@ func (m *model) handlePromptKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd)
 	case "esc", "ctrl+c":
 		m.promptMode, m.promptText, m.statusMsg = false, "", ""
 	case "enter":
+		asked := m.managerFocused() && m.promptText != ""
 		if m.promptText != "" {
 			m.act(m.promptAction, m.promptTarget, m.promptText)
 		}
 		m.promptMode, m.promptText, m.statusMsg = false, "", ""
+		if asked {
+			// The bar shows a spinner from here until the reply lands, so the
+			// animation clock has to be running even if nothing else is.
+			m.managerBusy, m.managerReply = true, ""
+			if !m.spinning {
+				m.spinning = true
+				return m, spinnerTick()
+			}
+		}
 	case "backspace":
 		if r := []rune(m.promptText); len(r) > 0 {
 			m.promptText = string(r[:len(r)-1])
@@ -359,6 +375,18 @@ func (m *model) handlePromptKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd)
 
 func (m *model) startPrompt(label, action, target string) {
 	m.promptMode, m.promptLabel, m.promptAction, m.promptTarget, m.promptText = true, label, action, target, ""
+}
+
+// focusManager puts the cursor in the manager bar. Reached from the prefix key
+// and from a click on the bar itself.
+func (m *model) focusManager() {
+	m.startPrompt("manager", attachproto.ActionManager, "")
+	m.statusMsg = "manager — enter asks · esc cancels"
+}
+
+// managerFocused reports whether what you type goes to the manager bar.
+func (m *model) managerFocused() bool {
+	return m.promptMode && m.promptAction == attachproto.ActionManager
 }
 
 func (m *model) move(dir string) {
@@ -400,10 +428,24 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			x := msg.X - m.sidebarWidth()
 			for _, h := range m.tabHits {
 				if x >= h.from && x < h.to {
-					m.act(attachproto.ActionFocusTab, h.id, "")
+					if button == "right" {
+						m.startPrompt("rename tab", attachproto.ActionRenameTab, h.id)
+					} else {
+						m.act(attachproto.ActionFocusTab, h.id, "")
+					}
 					break
 				}
 			}
+		}
+		return m, nil
+	}
+
+	// Bottom chrome. The manager bar takes a click as "talk to me"; the status
+	// row below it is not interactive. Neither is pane content, so nothing here
+	// may fall through to the daemon's hit-testing.
+	if managerRow := headerRows + m.paneRows(); msg.Y >= managerRow {
+		if kind == "press" && msg.Y == managerRow && !m.managerFocused() {
+			m.focusManager()
 		}
 		return m, nil
 	}
@@ -498,7 +540,7 @@ func (m *model) handleServerMsg(msg attachproto.ServerMsg) (tea.Model, tea.Cmd) 
 			ANSI: msg.ANSI, CursorX: msg.CursorX, CursorY: msg.CursorY, Revision: msg.Revision,
 		}
 	case attachproto.TypeManagerReply:
-		m.statusMsg = m.p.managerReply.Render(m.icons.Agent+" ") + msg.Text
+		m.managerReply, m.managerBusy = msg.Text, false
 
 	case attachproto.TypeNotify:
 		// The daemon already played any system sound; the bell has to come
@@ -569,7 +611,7 @@ func (m *model) View() string {
 			lines = append(lines, sidebar[i]+content[i])
 		}
 	}
-	lines = append(lines, m.renderStatus())
+	lines = append(lines, m.renderManagerBar(), m.renderStatus())
 
 	// The help floats on top of all that, so the panes, sidebar and tabs stay
 	// visible behind it.
@@ -581,7 +623,9 @@ func (m *model) View() string {
 }
 
 func (m *model) renderStatus() string {
-	if m.promptMode {
+	// A manager prompt draws itself in the manager bar, so the status row keeps
+	// showing whatever it was showing.
+	if m.promptMode && !m.managerFocused() {
 		return m.promptLabel + ": " + m.promptText + "▌"
 	}
 	if m.statusMsg != "" {
