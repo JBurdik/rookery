@@ -94,6 +94,25 @@ func TestSidebarSelectionBand(t *testing.T) {
 	}
 }
 
+// TestSidebarWorkspaceMarkerReflectsStatus: the marker in front of a
+// workspace's name is its aggregate status glyph, not a fixed dot, so a
+// workspace with a blocked agent inside looks different from an idle one
+// even with colour off. Ported from Herdr's shape-coded state dots.
+func TestSidebarWorkspaceMarkerReflectsStatus(t *testing.T) {
+	m := sidebarModel()
+	m.state.Workspaces[0].Status = "blocked"
+	lines := m.renderSidebar(14)
+
+	// The workspace panel row is the first "agentic-ide" line; a second one
+	// later is just the agent list's group header, which carries no marker.
+	if !strings.Contains(lines[0], "agentic-ide") {
+		t.Fatalf("expected workspace row first, got %q", lines[0])
+	}
+	if !strings.Contains(lines[0], m.icons.Blocked) {
+		t.Errorf("blocked workspace row missing blocked glyph %q: %q", m.icons.Blocked, lines[0])
+	}
+}
+
 // TestSidebarRowWidths: every row has to be exactly the sidebar width, or the
 // pane content concatenated onto it lands a column off.
 func TestSidebarRowWidths(t *testing.T) {
