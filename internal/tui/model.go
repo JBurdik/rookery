@@ -66,6 +66,14 @@ type model struct {
 	pickerIndex int
 	pickerItems []pickerItem
 
+	// The right-click context menu: opened at a screen position, closed by
+	// esc, an item, or a click elsewhere.
+	menuOpen  bool
+	menuIndex int
+	menuItems []menuItem
+	menuX     int
+	menuY     int
+
 	// The manager bar's own state. managerReply is the last thing it said and
 	// stays on screen until it says something else; managerBusy runs the
 	// spinner between asking and being answered.
@@ -206,6 +214,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case m.pickerOpen:
 		return m.handlePickerKey(msg, key)
+	case m.menuOpen:
+		return m.handleMenuKey(key)
 	case m.promptMode:
 		return m.handlePromptKey(msg, key)
 	case m.navMode:
@@ -291,6 +301,10 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.act(attachproto.ActionPrevWS, "", "")
 	case config.ActionCloseWorkspce:
 		m.act(attachproto.ActionCloseWS, m.state.ActiveWorkspace, "")
+	case config.ActionRenameWorkspace:
+		m.startPrompt("rename workspace", attachproto.ActionRenameWS, m.state.ActiveWorkspace)
+	case config.ActionRenamePane:
+		m.startPrompt("rename pane", attachproto.ActionRenamePane, m.state.Focus)
 	case config.ActionCopyMode:
 		m.enterCopyMode()
 	case config.ActionGoto:
@@ -443,6 +457,23 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// A context menu owns every click until it is dismissed: inside it, a
+	// press activates the row under the pointer; outside it, the press
+	// closes the menu instead of falling through to whatever is under it —
+	// except a right-click, which may open a different menu right there.
+	if m.menuOpen {
+		if kind != "press" {
+			return m, nil
+		}
+		if m.menuHit(msg.X, msg.Y) {
+			return m, nil
+		}
+		m.closeMenu()
+		if button != "right" {
+			return m, nil
+		}
+	}
+
 	// Tab strip.
 	if msg.Y == 0 {
 		if kind == "press" {
@@ -450,7 +481,7 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			for _, h := range m.tabHits {
 				if x >= h.from && x < h.to {
 					if button == "right" {
-						m.startPrompt("rename tab", attachproto.ActionRenameTab, h.id)
+						m.openMenu(msg.X, msg.Y+1, tabMenu(h.id))
 					} else {
 						m.act(attachproto.ActionFocusTab, h.id, "")
 					}
@@ -475,25 +506,51 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.X < m.sidebarWidth() {
 		if kind == "press" {
 			if row := msg.Y - headerRows; row >= 0 && row < len(m.sidebarRows) {
-				m.activateSidebarRow(m.sidebarRows[row])
+				sr := m.sidebarRows[row]
+				switch {
+				case button == "right" && sr.kind == "workspace":
+					m.openMenu(msg.X, msg.Y, workspaceMenu(sr.target))
+				case button != "right":
+					m.activateSidebarRow(sr)
+				}
 			}
 		}
 		return m, nil
 	}
 
-	// Content area: the daemon decides between focusing a pane, dragging a
-	// divider, and forwarding to a program that asked for mouse reporting.
+	// Content area: a right-click on a pane opens its menu; everything else
+	// the daemon decides between focusing a pane, dragging a divider, and
+	// forwarding to a program that asked for mouse reporting.
+	cx, cy := msg.X-m.sidebarWidth(), msg.Y-headerRows
+	if kind == "press" && button == "right" {
+		if paneID := m.paneAt(cx, cy); paneID != "" {
+			m.openMenu(msg.X, msg.Y, paneMenu(paneID))
+			return m, nil
+		}
+	}
 	m.send(attachproto.Mouse{
 		Type:   attachproto.TypeMouse,
 		Kind:   kind,
 		Button: button,
-		X:      msg.X - m.sidebarWidth(),
-		Y:      msg.Y - headerRows,
+		X:      cx,
+		Y:      cy,
 		Alt:    msg.Alt,
 		Ctrl:   msg.Ctrl,
 		Shift:  msg.Shift,
 	})
 	return m, nil
+}
+
+// paneAt finds which pane, if any, occupies a content-area coordinate. The
+// daemon reports each pane's rectangle for exactly this: hit-testing without
+// a round trip.
+func (m *model) paneAt(x, y int) string {
+	for _, p := range m.state.Panes {
+		if x >= p.X && x < p.X+p.W && y >= p.Y && y < p.Y+p.H {
+			return p.PaneID
+		}
+	}
+	return ""
 }
 
 func mouseKind(msg tea.MouseMsg) (kind, button string) {
@@ -650,6 +707,11 @@ func (m *model) View() string {
 	}
 	if m.pickerOpen {
 		lines = m.overlay(lines, m.renderPicker(m.width), m.width, m.height)
+	}
+	if m.menuOpen {
+		box := m.renderMenu()
+		left, top := m.menuOrigin(box)
+		lines = m.overlayAt(lines, box, m.width, m.height, left, top)
 	}
 
 	return strings.Join(lines, "\n")

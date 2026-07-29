@@ -50,7 +50,6 @@ and `~/.rook/{config,hotkeys}.json`.
 Still missing against Herdr (copy mode, the scrollback viewport, layout
 persistence and the goto picker have since landed — see the round below):
 
-- **Right-click context menus** on panes, tabs and workspaces.
 - **Swap panes** (`prefix+shift+hjkl`) and a resize *mode* rather than
   one-shot resize keys.
 - **Per-client viewports** — one composite frame is rendered at the last
@@ -63,6 +62,13 @@ persistence and the goto picker have since landed — see the round below):
 Shipped in that round: a scroll viewport with copy mode (`prefix [`, wheel,
 OSC 52 yank), layout persistence across a daemon restart, and the `prefix f`
 goto picker.
+
+Right-click context menus (2026-07-29): a pane header, a tab, or a sidebar
+workspace row now opens a small popover at the click — rename/close/split/zoom
+for a pane, rename/close/new for a tab, rename/new/close for a workspace.
+Dismissed with esc or a click elsewhere; each item runs exactly the action its
+own keybinding would (`prefix r` renames a pane, `prefix R` a workspace — both
+new bindings, since neither existed before this).
 
 Still open, in the order they are likely to bite:
 

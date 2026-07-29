@@ -453,6 +453,15 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 			w.Named = m.text != ""
 			l.broadcastState()
 		}
+	case attachproto.ActionRenamePane:
+		target := m.target
+		if target == "" {
+			target = l.app.focusedPane()
+		}
+		if p, ok := l.app.panes[target]; ok {
+			p.Label = m.text
+			l.broadcastState()
+		}
 	}
 
 	if resp.Error != nil {
