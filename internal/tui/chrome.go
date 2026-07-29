@@ -264,13 +264,16 @@ func (m *model) renderSidebar(rows int) []string {
 		if s, ok := m.p.status[w.Status]; ok {
 			style = s
 		}
-		// The active workspace gets a filled dot, the rest a hollow one. No
-		// repo glyph: the dot already says "this is a workspace, this is the
-		// one you are in", and a second icon on every row is noise.
-		marker := m.icons.Idle
+		// The marker is the workspace's aggregate status glyph, not a fixed
+		// dot: a workspace with a blocked agent inside should look different
+		// from one that is merely idle even with colour off (ascii theme, no
+		// TTY colour support). The active workspace is already marked by its
+		// bold accent style below, so the glyph itself doesn't need to change
+		// for that.
+		marker := m.statusGlyph(w.Status, "")
 		branch := m.p.sidebarBranch
 		if w.ID == m.state.ActiveWorkspace {
-			style, marker = m.p.sidebarActive, m.icons.Unread
+			style = m.p.sidebarActive
 			// The band covers the branch row too, so a two-line entry reads as
 			// one selected block rather than a highlighted line with an
 			// unrelated line stuck under it.

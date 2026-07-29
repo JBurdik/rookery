@@ -20,6 +20,26 @@ Ideas gathered from Herdr's fuller feature set and from `stablyai/orca` (open-so
 - Live-upgrade / handoff mechanism (Herdr's `handoff.rs`) — seamless daemon binary upgrade without dropping running PTYs, via FD passing to a new process.
 - Kitty graphics protocol / image passthrough in panes.
 
+### Status icon/spinner comparison with Herdr (2026-07-29)
+
+Compared `internal/icons` and the sidebar/chrome rendering against Herdr's
+`ui/status.rs` and `ui/sidebar.rs`. Most of what Herdr does was already
+present here, and in places ours goes further:
+
+- Numeric unread badges (`m.badge(n)`) already beat Herdr's plain dot —
+  Herdr has no per-workspace/per-total count, just a coloured marker.
+- Configurable icon theme (unicode/nerd/ascii) and six spinner styles
+  already exceed Herdr's single hardcoded braille spinner and fixed glyphs.
+- Ported: the workspace rollup marker in the sidebar now renders the
+  aggregate status glyph (blocked/working/done/idle/unknown) instead of a
+  fixed dot, matching Herdr's `state_dot` — a workspace with a blocked agent
+  inside now looks different from an idle one even with colour off.
+- Not ported: Herdr's separate `agent_icon` (bullseye for blocked, checkmark
+  for seen-done) vs `state_dot` (plain dot) split between its two panels.
+  Ours already gives blocked/done/idle distinct glyphs project-wide via
+  `icons.Set`, so a second, view-specific glyph set would be a fourth way to
+  say the same five states — skipped as needless duplication.
+
 ## Open questions to revisit later
 
 - Multi-client differing terminal sizes (v1: last attacher's viewport wins — needs a real per-client viewport story if this becomes annoying).

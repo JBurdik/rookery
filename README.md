@@ -83,7 +83,10 @@ The top strip is tabs, numbered and coloured by what their agents want. There
 is no permanent status bar: the help line appears while the prefix is pending
 and disappears again, so the terminal keeps the screen.
 
-Every pane carries a status glyph, in the sidebar and in its own header:
+Every pane carries a status glyph, in the sidebar and in its own header. A
+workspace row carries one too — its *aggregate* status, so a workspace with a
+blocked agent inside looks different from a merely idle one even with colour
+turned off:
 
 | Glyph | Status | Meaning |
 | --- | --- | --- |
