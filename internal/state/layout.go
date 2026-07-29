@@ -151,6 +151,18 @@ func (l *Layout) adjust(delta float64) bool {
 
 func (l *Layout) contains(paneID string) bool { return l.find(paneID) != nil }
 
+// Swap exchanges the positions of two panes in the tree: each leaf keeps its
+// own content and process, only the PaneID each split slot holds changes.
+// Reports false if either pane isn't in the tree.
+func (l *Layout) Swap(paneA, paneB string) bool {
+	a, b := l.find(paneA), l.find(paneB)
+	if a == nil || b == nil {
+		return false
+	}
+	a.PaneID, b.PaneID = b.PaneID, a.PaneID
+	return true
+}
+
 // Rects assigns every pane a rectangle inside the given area, reserving one
 // cell between siblings for the divider the renderer draws there.
 func (l *Layout) Rects(area Rect) map[string]Rect {

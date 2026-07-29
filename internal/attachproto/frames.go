@@ -22,6 +22,7 @@ const (
 	TypeClosePane  = "close_pane"  // client -> server
 	TypeMoveFocus  = "move_focus"  // client -> server, focus by direction
 	TypeResizePane = "resize_pane" // client -> server, nudge a divider
+	TypeSwapPane   = "swap_pane"   // client -> server, swap the focused pane with a neighbor
 	TypeZoom       = "zoom"        // client -> server, toggle zoom
 	// TypeClientFocus reports whether the client's terminal window has focus.
 	// The daemon needs it to decide between a sound (you are here) and an OS
@@ -274,6 +275,12 @@ type MoveFocus struct {
 
 // ResizePane nudges the divider of the split containing the focused pane.
 type ResizePane struct {
+	Type      string `json:"type"`
+	Direction string `json:"direction"`
+}
+
+// SwapPane exchanges the focused pane with its neighbor in a direction.
+type SwapPane struct {
 	Type      string `json:"type"`
 	Direction string `json:"direction"`
 }

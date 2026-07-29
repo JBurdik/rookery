@@ -104,6 +104,11 @@ const (
 	ActionResizeDown    = "resize_pane_down"
 	ActionResizeUp      = "resize_pane_up"
 	ActionResizeRight   = "resize_pane_right"
+	ActionResizeMode    = "resize_mode"
+	ActionSwapLeft      = "swap_pane_left"
+	ActionSwapDown      = "swap_pane_down"
+	ActionSwapUp        = "swap_pane_up"
+	ActionSwapRight     = "swap_pane_right"
 	ActionNewWorkspace  = "new_workspace"
 	ActionNextWorkspace = "next_workspace"
 	ActionPrevWorkspace = "prev_workspace"
@@ -157,10 +162,11 @@ func DefaultHotkeys() Hotkeys {
 			ActionFocusDown:     {"j", "down"},
 			ActionFocusUp:       {"k", "up"},
 			ActionFocusRight:    {"l", "right"},
-			ActionResizeLeft:    {"H", "shift+left"},
-			ActionResizeDown:    {"J", "shift+down"},
-			ActionResizeUp:      {"K", "shift+up"},
-			ActionResizeRight:   {"L", "shift+right"},
+			ActionSwapLeft:      {"H", "shift+left"},
+			ActionSwapDown:      {"J", "shift+down"},
+			ActionSwapUp:        {"K", "shift+up"},
+			ActionSwapRight:     {"L", "shift+right"},
+			ActionResizeMode:    {"r"},
 			ActionNewWorkspace:  {"N"},
 			ActionNextWorkspace: {"w"},
 			ActionPrevWorkspace: {"W"},

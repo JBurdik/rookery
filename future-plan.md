@@ -51,8 +51,10 @@ Still missing against Herdr (copy mode, the scrollback viewport, layout
 persistence and the goto picker have since landed — see the round below):
 
 - **Right-click context menus** on panes, tabs and workspaces.
-- **Swap panes** (`prefix+shift+hjkl`) and a resize *mode* rather than
-  one-shot resize keys.
+- ~~Swap panes (`prefix+shift+hjkl`) and a resize *mode* rather than one-shot
+  resize keys.~~ Done: `prefix+shift+hjkl`/shift+arrows swap the focused pane
+  with its neighbor; `prefix r` enters a resize mode where hjkl/arrows nudge
+  the divider repeatedly until Esc/Enter.
 - **Per-client viewports** — one composite frame is rendered at the last
   attacher's size, so two clients with different terminal sizes share the
   smaller one.

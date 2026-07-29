@@ -60,6 +60,11 @@ type model struct {
 	copyMode  bool
 	selecting bool
 
+	// resizeMode routes hjkl/arrows to repeated divider nudges instead of at
+	// the pane, so a divider can be resized several steps without re-pressing
+	// prefix+shift each time. Exited by esc/enter.
+	resizeMode bool
+
 	// The goto picker: a fuzzy filter over every workspace, tab and agent.
 	pickerOpen  bool
 	pickerQuery string
@@ -212,6 +217,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleNavKey(key)
 	case m.copyMode && key != m.keys.Prefix:
 		return m.handleCopyKey(msg, key)
+	case m.resizeMode && key != m.keys.Prefix:
+		return m.handleResizeKey(msg, key)
 	case m.prefixMode:
 		m.prefixMode = false
 		m.statusMsg = ""
@@ -283,6 +290,16 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.resize("up")
 	case config.ActionResizeRight:
 		m.resize("right")
+	case config.ActionResizeMode:
+		m.enterResizeMode()
+	case config.ActionSwapLeft:
+		m.swap("left")
+	case config.ActionSwapDown:
+		m.swap("down")
+	case config.ActionSwapUp:
+		m.swap("up")
+	case config.ActionSwapRight:
+		m.swap("right")
 	case config.ActionNewWorkspace:
 		m.act(attachproto.ActionNewWorkspace, "", "")
 	case config.ActionNextWorkspace:
@@ -416,6 +433,10 @@ func (m *model) move(dir string) {
 
 func (m *model) resize(dir string) {
 	m.send(attachproto.ResizePane{Type: attachproto.TypeResizePane, Direction: dir})
+}
+
+func (m *model) swap(dir string) {
+	m.send(attachproto.SwapPane{Type: attachproto.TypeSwapPane, Direction: dir})
 }
 
 func (m *model) act(action, target, text string) {
@@ -666,6 +687,9 @@ func (m *model) renderStatus() string {
 	}
 	if m.copyMode {
 		return m.p.help.Render(m.copyHint())
+	}
+	if m.resizeMode {
+		return m.p.help.Render(m.resizeHint())
 	}
 	return ""
 }

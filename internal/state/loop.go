@@ -392,6 +392,8 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 		}
 	case attachproto.TypeResizePane:
 		l.resizeSplit(l.app.focusedPane(), m.dir, 0)
+	case attachproto.TypeSwapPane:
+		l.swapPane(l.app.focusedPane(), m.dir)
 	case attachproto.TypeZoom:
 		if t := l.app.activeTab(); t != nil {
 			t.zoom = !t.zoom
