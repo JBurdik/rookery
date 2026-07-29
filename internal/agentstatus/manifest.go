@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -22,10 +23,17 @@ import (
 //go:embed manifests/*.json
 var builtinManifests embed.FS
 
-// Region is the part of a pane a rule looks at.
+// Region is the part of a pane a rule looks at. Beyond the two fixed regions,
+// "bottom_non_empty_lines(N)" takes an N and returns the last N non-empty
+// screen lines (plus any blank lines between them) — Herdr's region of the
+// same name.
 const (
-	RegionTitle  = "title"  // the terminal title the program set
-	RegionBottom = "bottom" // the last few non-empty screen lines
+	RegionTitle          = "title"                      // the terminal title the program set
+	RegionOSCTitle       = "osc_title"                  // same source as title; Herdr's name for it
+	RegionBottom         = "bottom"                     // the last 6 non-empty screen lines (fixed)
+	RegionWholeRecent    = "whole_recent"               // the whole visible screen
+	RegionAfterRule      = "after_last_horizontal_rule" // screen content after the last ─── line
+	bottomNonEmptyPrefix = "bottom_non_empty_lines("
 )
 
 // Rule is one prioritised match. The highest-priority matching rule across
@@ -38,6 +46,15 @@ type Rule struct {
 	Regex    string   `json:"regex,omitempty"`
 	Contains []string `json:"contains,omitempty"`
 	Any      []string `json:"any,omitempty"`
+	// SkipStateUpdate marks a rule that suppresses a verdict rather than
+	// producing one — Herdr uses this for transcript viewers layered over an
+	// agent's own screen, where a match means "ignore this tick", not "the
+	// agent is unknown". Only valid on a rule whose state is "unknown".
+	SkipStateUpdate bool `json:"skip_state_update,omitempty"`
+	// VisibleBlocker marks a blocked verdict as directly visible on screen
+	// (a confirmation dialog), as opposed to inferred from an absence of
+	// other markers. Mutually exclusive with SkipStateUpdate.
+	VisibleBlocker bool `json:"visible_blocker,omitempty"`
 	// Why is documentation for whoever reads the file next; unused at runtime.
 	Why string `json:"why,omitempty"`
 
@@ -122,6 +139,17 @@ func (r *Registry) add(data []byte) error {
 		if rule.Region == "" {
 			rule.Region = RegionBottom
 		}
+		if !validRegion(rule.Region) {
+			return fmt.Errorf("rule %q: invalid region %q", rule.ID, rule.Region)
+		}
+		if rule.SkipStateUpdate {
+			if rule.State != Unknown {
+				return fmt.Errorf("rule %q: skip_state_update requires state \"unknown\"", rule.ID)
+			}
+			if rule.VisibleBlocker {
+				return fmt.Errorf("rule %q: skip_state_update cannot be combined with visible_blocker", rule.ID)
+			}
+		}
 		if rule.Regex != "" {
 			re, err := regexp.Compile(rule.Regex)
 			if err != nil {
@@ -186,28 +214,43 @@ func (r *Registry) Agents() []string {
 // Manifest returns one agent's manifest, or nil.
 func (r *Registry) Manifest(id string) *Manifest { return r.byID[id] }
 
+// Verdict is the result of evaluating a rule set: not just the state, but
+// whether the matched rule wants it applied at all.
+type Verdict struct {
+	State State
+	// SkipStateUpdate reports that the winning rule matched but asked for its
+	// verdict to be discarded — the caller should keep whatever state it had
+	// before this tick rather than treat State (always Unknown here) as a
+	// verdict.
+	SkipStateUpdate bool
+	// VisibleBlocker reports that the winning rule is a Blocked verdict the
+	// rule author marked as directly visible on screen.
+	VisibleBlocker bool
+}
+
 // Evaluate returns the highest-priority state matching the input, considering
 // the named agent's own rules plus the shared generic ones. Reports Unknown
 // when nothing matches.
 func (r *Registry) Evaluate(agent string, in Input) State {
-	title := strings.TrimSpace(in.Title)
-	bottom := strings.ToLower(strings.Join(in.Bottom, "\n"))
+	return r.EvaluateVerdict(agent, in).State
+}
 
-	best, bestPriority := Unknown, -1
+// EvaluateVerdict is Evaluate plus the winning rule's skip/visible flags.
+func (r *Registry) EvaluateVerdict(agent string, in Input) Verdict {
+	best := Verdict{State: Unknown}
+	bestPriority := -1
 	consider := func(rules []Rule) {
 		for _, rule := range rules {
 			if rule.Priority <= bestPriority {
 				continue
 			}
-			hay := bottom
-			if rule.Region == RegionTitle {
-				// The spinner regexp needs the untouched title: lowercasing
-				// is fine for substrings, but the glyph ranges must match
-				// as-is.
-				hay = title
-			}
-			if rule.matches(hay) {
-				best, bestPriority = rule.State, rule.Priority
+			if rule.matches(regionText(rule.Region, in)) {
+				best = Verdict{
+					State:           rule.State,
+					SkipStateUpdate: rule.SkipStateUpdate,
+					VisibleBlocker:  rule.VisibleBlocker && rule.State == Blocked,
+				}
+				bestPriority = rule.Priority
 			}
 		}
 	}
@@ -226,10 +269,120 @@ func (r *Registry) Evaluate(agent string, in Input) State {
 // continuously (spinners, context meters, token counters), so "printed
 // something recently" stays true while one sits idle for minutes.
 func (r *Registry) EvaluateAgent(agent string, in Input) State {
-	if s := r.Evaluate(agent, in); s != Unknown {
-		return s
+	v := r.EvaluateAgentVerdict(agent, in)
+	return v.State
+}
+
+// EvaluateAgentVerdict is EvaluateAgent plus the winning rule's skip/visible
+// flags. A SkipStateUpdate verdict is left as Unknown rather than defaulted
+// to Idle — the caller is expected to keep its previous state instead.
+func (r *Registry) EvaluateAgentVerdict(agent string, in Input) Verdict {
+	v := r.EvaluateVerdict(agent, in)
+	if v.State == Unknown && !v.SkipStateUpdate {
+		v.State = Idle
 	}
-	return Idle
+	return v
+}
+
+// regionText resolves a rule's region against the input, returning the text
+// a rule's matchers run against. Title regions keep their original case (the
+// spinner regexp needs the untouched glyphs); everything else is lowercased,
+// matching the "bottom" region's long-standing behaviour.
+func regionText(region string, in Input) string {
+	switch {
+	case region == RegionTitle || region == RegionOSCTitle:
+		return strings.TrimSpace(in.Title)
+	case region == RegionBottom:
+		return strings.ToLower(strings.Join(in.Bottom, "\n"))
+	case region == RegionWholeRecent:
+		return strings.ToLower(strings.Join(in.Screen, "\n"))
+	case region == RegionAfterRule:
+		return strings.ToLower(strings.Join(afterLastHorizontalRule(in.Screen), "\n"))
+	default:
+		if n, ok := parseCountRegion(region); ok {
+			return strings.ToLower(strings.Join(bottomNonEmptyLines(in.Screen, n), "\n"))
+		}
+		return ""
+	}
+}
+
+// validRegion reports whether a manifest's region string is one this package
+// knows how to resolve.
+func validRegion(region string) bool {
+	switch region {
+	case RegionTitle, RegionOSCTitle, RegionBottom, RegionWholeRecent, RegionAfterRule:
+		return true
+	}
+	_, ok := parseCountRegion(region)
+	return ok
+}
+
+// parseCountRegion parses "bottom_non_empty_lines(N)", returning N.
+func parseCountRegion(region string) (int, bool) {
+	rest, ok := strings.CutPrefix(region, bottomNonEmptyPrefix)
+	if !ok {
+		return 0, false
+	}
+	rest, ok = strings.CutSuffix(rest, ")")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// afterLastHorizontalRule returns everything after the last line that is
+// itself a horizontal rule (a run of ─, Claude Code's box-drawing style). If
+// no rule line is found, it returns the whole screen — same fallback Herdr
+// uses.
+func afterLastHorizontalRule(lines []string) []string {
+	last := -1
+	for i, line := range lines {
+		if isHorizontalRule(line) {
+			last = i
+		}
+	}
+	return lines[last+1:]
+}
+
+// isHorizontalRule reports whether a line is (up to surrounding whitespace)
+// a run of box-drawing ─ characters — Claude Code's separator between the
+// transcript and its prompt box.
+func isHorizontalRule(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	runes := []rune(trimmed)
+	n := 0
+	for n < len(runes) && runes[n] == '─' {
+		n++
+	}
+	if n == 0 {
+		return false
+	}
+	rest := strings.TrimSpace(string(runes[n:]))
+	return rest == "" || n >= 3
+}
+
+// bottomNonEmptyLines returns the last count non-empty lines, plus any blank
+// lines between them, working back from the end of the screen.
+func bottomNonEmptyLines(lines []string, count int) []string {
+	idx := -1
+	found := 0
+	for i := len(lines) - 1; i >= 0 && found < count; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			idx = i
+			found++
+		}
+	}
+	if idx == -1 {
+		return nil
+	}
+	return lines[idx:]
 }
 
 func (rule Rule) matches(hay string) bool {

@@ -95,10 +95,30 @@ Still missing versus Herdr's manifest system:
   hand-edited file.
 - **`min_engine_version` / versioned manifests.** No compatibility gate, so a
   future rule field would be silently ignored by an older binary.
-- **Richer regions.** Herdr has `after_last_horizontal_rule`, `whole_recent`,
-  `osc_title`, `bottom_non_empty_lines(N)` with an argument; ours has `title`
-  and `bottom` (fixed at 6 lines).
-- **`skip_state_update` / `visible_blocker` flags**, which let a rule suppress
-  a verdict rather than produce one (Herdr uses this for transcript viewers).
 - **Per-agent integrations** — reading an agent's own session files rather than
   scraping its screen.
+
+### Richer regions and skip/visible flags (2026-07-29) — done
+
+`internal/agentstatus` now matches Herdr's region set beyond `title` and
+`bottom`: `whole_recent` (the whole visible screen), `after_last_horizontal_rule`
+(everything after the last ─── line, Claude's transcript/prompt-box divider),
+`osc_title` (an alias for `title` — Herdr's name for the same OSC-title
+source), and `bottom_non_empty_lines(N)` (the last N non-empty lines, blanks
+between them kept, matching Herdr's own slicing). `title`/`bottom` keep their
+exact existing behaviour — new regions read `Input.Screen`
+(`termgrid.Grid.Lines()`, the whole grid with blanks kept), which `bottom`
+still ignores in favour of its fixed 6-line `BottomLines(6)`.
+
+A rule can also carry `skip_state_update` (state must be `"unknown"`; the
+matched verdict is discarded rather than defaulted to idle — the caller keeps
+the pane's previous state, wired into `loop.go`'s `evaluatePane`) and
+`visible_blocker` (marks a blocked verdict as directly visible on screen
+rather than inferred; mutually exclusive with `skip_state_update`, matching
+Herdr's validation). `Registry.EvaluateVerdict`/`EvaluateAgentVerdict` expose
+both flags alongside the state; `Evaluate`/`EvaluateAgent` are unchanged thin
+wrappers. The built-ins use both: `generic.json`'s `confirm_prompt`,
+`menu_nav`, `press_enter` and `claude.json`'s `trust_prompt` now carry
+`visible_blocker`, and `generic.json` gained a `pager_viewer` rule
+(`after_last_horizontal_rule`, `skip_state_update`) for a pager's `(END)`
+footer paging through an agent's own output.

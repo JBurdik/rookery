@@ -31,7 +31,11 @@ const (
 // Input is everything the detector gets to look at.
 type Input struct {
 	Title  string   // OSC 0/2 terminal title the pane's program last set
-	Bottom []string // last few non-empty screen lines, oldest first
+	Bottom []string // last few non-empty screen lines, oldest first (fixed at 6, the "bottom" region)
+	// Screen is the whole visible grid, top to bottom, blank lines included.
+	// It backs the richer regions ("whole_recent", "after_last_horizontal_rule",
+	// "bottom_non_empty_lines(N)") that need more than the fixed bottom slice.
+	Screen []string
 }
 
 // CleanTitle turns an agent's terminal title into something worth showing in

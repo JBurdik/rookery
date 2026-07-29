@@ -642,10 +642,17 @@ func (l *Loop) evaluatePane(pane *Pane) agentstatus.State {
 		return pane.Reported
 	}
 
-	in := agentstatus.Input{Title: pane.Grid.Title(), Bottom: pane.Grid.BottomLines(6)}
+	in := agentstatus.Input{Title: pane.Grid.Title(), Bottom: pane.Grid.BottomLines(6), Screen: pane.Grid.Lines()}
 
 	if pane.Agent != "" {
-		state := l.agents.EvaluateAgent(pane.Agent, in)
+		verdict := l.agents.EvaluateAgentVerdict(pane.Agent, in)
+		if verdict.SkipStateUpdate {
+			// The winning rule asked for this tick to be ignored (a
+			// transcript viewer layered over the agent's own screen) —
+			// keep whatever the pane already reported.
+			return pane.AgentState
+		}
+		state := verdict.State
 		// Within the grace period after a prompt, only a positive marker can
 		// contradict "working" — a blank idle screen just means the agent
 		// has not redrawn yet.

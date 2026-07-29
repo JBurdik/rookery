@@ -17,6 +17,7 @@
       "priority": 210,
       "region": "bottom",
       "contains": ["do you trust"],
+      "visible_blocker": true,
       "why": "the folder-trust question on first run in a new directory"
     }
   ]

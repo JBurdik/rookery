@@ -186,6 +186,31 @@ func (g *Grid) BottomLines(n int) []string {
 	return out
 }
 
+// Lines returns every row of the visible grid, top to bottom, trailing
+// whitespace trimmed but blank lines kept — unlike BottomLines, which drops
+// them. Agent status regions that care about the line at a given screen
+// position (a horizontal rule, "the last N lines however blank") need this;
+// BottomLines' compaction would move them.
+func (g *Grid) Lines() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	cols, rows := g.term.Size()
+	out := make([]string, rows)
+	for y := range rows {
+		var b strings.Builder
+		for x := range cols {
+			ch := g.term.Cell(x, y).Char
+			if ch == 0 {
+				ch = ' '
+			}
+			b.WriteRune(ch)
+		}
+		out[y] = strings.TrimRight(b.String(), " \t")
+	}
+	return out
+}
+
 // CursorPosition returns the cursor's current column/row.
 func (g *Grid) CursorPosition() (x, y int) {
 	g.mu.Lock()
