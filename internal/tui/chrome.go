@@ -489,15 +489,20 @@ func baseName(s string) string {
 // sidebar and tab chrome are cheap to regenerate, and the pane content behind
 // the box would have to be re-emitted anyway.
 func (m *model) overlay(base []string, box []string, width, height int) []string {
-	boxW := 0
-	for _, line := range box {
-		boxW = max(boxW, lipgloss.Width(line))
-	}
-	boxW = min(boxW+2, width)
+	boxW := min(boxWidth(box)+2, width)
 	boxH := min(len(box)+2, height)
-
 	left := max((width-boxW)/2, 0)
 	top := max((height-boxH)/2, 0)
+	return m.overlayAt(base, box, width, height, left, top)
+}
+
+// overlayAt is overlay without the centring: the box's top-left corner is
+// pinned to (left, top), clamped so it never draws outside the screen. Used
+// for the context menu, which has to appear where you clicked rather than
+// in the middle of the screen.
+func (m *model) overlayAt(base []string, box []string, width, height, left, top int) []string {
+	boxW := min(boxWidth(box)+2, width)
+	boxH := min(len(box)+2, height)
 
 	out := make([]string, len(base))
 	copy(out, base)
@@ -516,6 +521,15 @@ func (m *model) overlay(base []string, box []string, width, height int) []string
 		out[row] = prefix + line
 	}
 	return out
+}
+
+// boxWidth is the widest rendered line in a popover's content.
+func boxWidth(box []string) int {
+	w := 0
+	for _, line := range box {
+		w = max(w, lipgloss.Width(line))
+	}
+	return w
 }
 
 // boxFrame wraps content in a rounded border sized to boxW x boxH.
@@ -561,6 +575,7 @@ var helpLeft = []helpEntry{
 	{config.ActionSplitRight, "split right"},
 	{config.ActionSplitDown, "split down"},
 	{config.ActionClosePane, "close pane"},
+	{config.ActionRenamePane, "rename pane"},
 	{config.ActionZoom, "zoom pane"},
 	{config.ActionFocusLeft, "focus left"},
 	{config.ActionFocusDown, "focus down"},
@@ -584,6 +599,7 @@ var helpRight = []helpEntry{
 	{config.ActionNextWorkspace, "next workspace"},
 	{config.ActionPrevWorkspace, "prev workspace"},
 	{config.ActionCloseWorkspce, "close workspace"},
+	{config.ActionRenameWorkspace, "rename workspace"},
 	{"", "view"},
 	{config.ActionGoto, "go to (fuzzy)"},
 	{config.ActionCopyMode, "scroll / copy mode"},
@@ -633,6 +649,7 @@ func (m *model) renderHelp(maxWidth int) []string {
 		"",
 		m.p.popoverMuted.Render(" copy mode: j/k g/G move · v select · y copy · esc exit"),
 		m.p.popoverMuted.Render(" mouse: click a pane, tab, workspace or agent · drag a divider · wheel scrolls back"),
+		m.p.popoverMuted.Render(" right-click a pane, tab or workspace for its menu"),
 		m.p.popoverMuted.Render(" shift+drag for your terminal's own text selection"),
 		"",
 		m.p.popoverMuted.Render(" "+m.configPath),

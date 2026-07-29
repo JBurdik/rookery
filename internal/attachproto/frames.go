@@ -51,6 +51,7 @@ const (
 	ActionPrevWS       = "prev_workspace"
 	ActionCloseWS      = "close_workspace"
 	ActionRenameWS     = "rename_workspace"
+	ActionRenamePane   = "rename_pane"
 	ActionGit          = "git"
 	ActionManager      = "manager"
 	// Scroll / copy mode. ActionScroll's Text is the movement: "up", "down",

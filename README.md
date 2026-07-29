@@ -423,9 +423,13 @@ seen. That is what makes "which of my agents wants me?" answerable at a glance.
 Mouse capture is on by default, the way Herdr ships it. Click a pane to focus
 it, a tab or workspace to switch, an agent in the sidebar to jump straight to
 it wherever it lives. Drag a divider to resize. Scroll to move back through the
-pane's own history (see [Scroll and copy](#scroll-and-copy)). Right-click a tab
-to rename it — the same prompt `prefix T` opens, on the tab you clicked rather
-than the active one.
+pane's own history (see [Scroll and copy](#scroll-and-copy)).
+
+Right-click for a context menu: a pane gets rename/close/split right/split
+down/zoom, a tab gets rename/close/new tab, and a workspace row in the
+sidebar gets rename/new workspace/close. Every item runs exactly what its own
+keybinding would, targeting whatever you clicked rather than whatever was
+active. Esc or a click outside the menu dismisses it.
 
 Panes whose program asked for mouse reporting — Claude Code, vim, anything
 full-screen — get the events forwarded SGR-encoded in pane-local coordinates
@@ -493,7 +497,8 @@ your own keymap.
 | `h` `j` `k` `l` | move focus | | `?` | help |
 | `H` `J` `K` `L` | resize | | `q` | detach |
 | `z` | zoom pane | | `ctrl+b` | send a literal `ctrl+b` |
-| `x` | close pane | | | |
+| `x` | close pane | | `R` | rename workspace |
+| `r` | rename pane | | | |
 
 Arrows work anywhere the `hjkl` do. Everything is remappable in
 `~/.rook/hotkeys.json`, the prefix included:
@@ -674,8 +679,7 @@ frame per tick; the client draws that frame and its own chrome. Both sockets
 speak NDJSON — one JSON object per line — so `nc -U` is a valid debugging
 client.
 
-Not in this version: copy mode and drag-to-select, right-click menus, layout
-persistence across a daemon restart, plugins, git worktrees, OS notifications,
+Not in this version: character-accurate scrollback and drag-to-select, plugins, git worktrees, OS notifications,
 and per-client viewports (the daemon renders one frame at the last attacher's
 size). A mouse wheel in a pane that hasn't asked for mouse reporting sends
 arrow keys rather than scrolling a real scrollback buffer. See

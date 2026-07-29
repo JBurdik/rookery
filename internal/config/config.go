@@ -86,38 +86,40 @@ type Hotkeys struct {
 
 // Action names. These are the strings used in hotkeys.json.
 const (
-	ActionNewTab        = "new_tab"
-	ActionNewTabNamed   = "new_tab_named"
-	ActionCloseTab      = "close_tab"
-	ActionNextTab       = "next_tab"
-	ActionPrevTab       = "prev_tab"
-	ActionRenameTab     = "rename_tab"
-	ActionSplitRight    = "split_right"
-	ActionSplitDown     = "split_down"
-	ActionClosePane     = "close_pane"
-	ActionZoom          = "zoom"
-	ActionFocusLeft     = "focus_pane_left"
-	ActionFocusDown     = "focus_pane_down"
-	ActionFocusUp       = "focus_pane_up"
-	ActionFocusRight    = "focus_pane_right"
-	ActionResizeLeft    = "resize_pane_left"
-	ActionResizeDown    = "resize_pane_down"
-	ActionResizeUp      = "resize_pane_up"
-	ActionResizeRight   = "resize_pane_right"
-	ActionNewWorkspace  = "new_workspace"
-	ActionNextWorkspace = "next_workspace"
-	ActionPrevWorkspace = "prev_workspace"
-	ActionCloseWorkspce = "close_workspace"
-	ActionCopyMode      = "copy_mode"
-	ActionGoto          = "goto"
-	ActionToggleSidebar = "toggle_sidebar"
-	ActionFocusSidebar  = "focus_sidebar"
-	ActionToggleMouse   = "toggle_mouse"
-	ActionDetach        = "detach"
-	ActionHelp          = "help"
-	ActionGit           = "git"
-	ActionManager       = "manager"
-	ActionLiteralPrefix = "literal_prefix"
+	ActionNewTab          = "new_tab"
+	ActionNewTabNamed     = "new_tab_named"
+	ActionCloseTab        = "close_tab"
+	ActionNextTab         = "next_tab"
+	ActionPrevTab         = "prev_tab"
+	ActionRenameTab       = "rename_tab"
+	ActionSplitRight      = "split_right"
+	ActionSplitDown       = "split_down"
+	ActionClosePane       = "close_pane"
+	ActionZoom            = "zoom"
+	ActionFocusLeft       = "focus_pane_left"
+	ActionFocusDown       = "focus_pane_down"
+	ActionFocusUp         = "focus_pane_up"
+	ActionFocusRight      = "focus_pane_right"
+	ActionResizeLeft      = "resize_pane_left"
+	ActionResizeDown      = "resize_pane_down"
+	ActionResizeUp        = "resize_pane_up"
+	ActionResizeRight     = "resize_pane_right"
+	ActionNewWorkspace    = "new_workspace"
+	ActionNextWorkspace   = "next_workspace"
+	ActionPrevWorkspace   = "prev_workspace"
+	ActionCloseWorkspce   = "close_workspace"
+	ActionRenameWorkspace = "rename_workspace"
+	ActionRenamePane      = "rename_pane"
+	ActionCopyMode        = "copy_mode"
+	ActionGoto            = "goto"
+	ActionToggleSidebar   = "toggle_sidebar"
+	ActionFocusSidebar    = "focus_sidebar"
+	ActionToggleMouse     = "toggle_mouse"
+	ActionDetach          = "detach"
+	ActionHelp            = "help"
+	ActionGit             = "git"
+	ActionManager         = "manager"
+	ActionLiteralPrefix   = "literal_prefix"
 )
 
 // DefaultConfig mirrors Herdr's defaults where they apply.
@@ -143,38 +145,40 @@ func DefaultHotkeys() Hotkeys {
 	return Hotkeys{
 		Prefix: "ctrl+b",
 		Bindings: map[string][]string{
-			ActionNewTab:        {"c"},
-			ActionNewTabNamed:   {"C"},
-			ActionCloseTab:      {"X"},
-			ActionNextTab:       {"n"},
-			ActionPrevTab:       {"p"},
-			ActionRenameTab:     {"T"},
-			ActionSplitRight:    {"v"},
-			ActionSplitDown:     {"-"},
-			ActionClosePane:     {"x"},
-			ActionZoom:          {"z"},
-			ActionFocusLeft:     {"h", "left"},
-			ActionFocusDown:     {"j", "down"},
-			ActionFocusUp:       {"k", "up"},
-			ActionFocusRight:    {"l", "right"},
-			ActionResizeLeft:    {"H", "shift+left"},
-			ActionResizeDown:    {"J", "shift+down"},
-			ActionResizeUp:      {"K", "shift+up"},
-			ActionResizeRight:   {"L", "shift+right"},
-			ActionNewWorkspace:  {"N"},
-			ActionNextWorkspace: {"w"},
-			ActionPrevWorkspace: {"W"},
-			ActionCloseWorkspce: {"D"},
-			ActionCopyMode:      {"[", "esc"},
-			ActionGoto:          {"f", "/"},
-			ActionToggleSidebar: {"b"},
-			ActionFocusSidebar:  {"g"},
-			ActionToggleMouse:   {"m"},
-			ActionDetach:        {"q", "d"},
-			ActionHelp:          {"?"},
-			ActionGit:           {"G"},
-			ActionManager:       {":", "a"},
-			ActionLiteralPrefix: {"ctrl+b"},
+			ActionNewTab:          {"c"},
+			ActionNewTabNamed:     {"C"},
+			ActionCloseTab:        {"X"},
+			ActionNextTab:         {"n"},
+			ActionPrevTab:         {"p"},
+			ActionRenameTab:       {"T"},
+			ActionSplitRight:      {"v"},
+			ActionSplitDown:       {"-"},
+			ActionClosePane:       {"x"},
+			ActionZoom:            {"z"},
+			ActionFocusLeft:       {"h", "left"},
+			ActionFocusDown:       {"j", "down"},
+			ActionFocusUp:         {"k", "up"},
+			ActionFocusRight:      {"l", "right"},
+			ActionResizeLeft:      {"H", "shift+left"},
+			ActionResizeDown:      {"J", "shift+down"},
+			ActionResizeUp:        {"K", "shift+up"},
+			ActionResizeRight:     {"L", "shift+right"},
+			ActionNewWorkspace:    {"N"},
+			ActionNextWorkspace:   {"w"},
+			ActionPrevWorkspace:   {"W"},
+			ActionCloseWorkspce:   {"D"},
+			ActionRenameWorkspace: {"R"},
+			ActionRenamePane:      {"r"},
+			ActionCopyMode:        {"[", "esc"},
+			ActionGoto:            {"f", "/"},
+			ActionToggleSidebar:   {"b"},
+			ActionFocusSidebar:    {"g"},
+			ActionToggleMouse:     {"m"},
+			ActionDetach:          {"q", "d"},
+			ActionHelp:            {"?"},
+			ActionGit:             {"G"},
+			ActionManager:         {":", "a"},
+			ActionLiteralPrefix:   {"ctrl+b"},
 		},
 	}
 }
