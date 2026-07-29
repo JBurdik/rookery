@@ -42,14 +42,14 @@ right and down. Ids say where something lives: `w1`, `w1:t2`, `w1:p3`.
 
 ```
  spaces              │ 1  2  3
- ● multiplexer       │1 ▶ Refactor the parser       │2 ! tests
+ ● multiplexer       │1 ▶ Refactor the parser       │2 ● tests
     main             │✳ Cogitating… (12s · esc to   │Run failing test again? (y/n)
    review            │                              ├──────────────────────────────
                      │                              │3 ● shell
  agents              │                              │$
   multiplexer        │                              │
- •✓ Fix the flaky …  │                              │
-  ! tests            │                              │
+ •● Fix the flaky …  │                              │
+  ● tests            │                              │
 ```
 
 Two sidebar panels, split half and half and divided by a rule: the workspaces

@@ -54,11 +54,14 @@ var themes = map[string]Set{
 		Tab:       "", //  cod-multiple_windows
 	},
 	ThemeUnicode: {
-		Blocked:   "!",
-		Done:      "✓",
-		Idle:      "●",
+		// Blocked/Done/Working share one glyph (dot), same as Herdr — color is
+		// what distinguishes them (see config.go Colors). Idle gets a hollow
+		// ring instead, matching Herdr's "seen" state.
+		Blocked:   "●",
+		Done:      "●",
+		Idle:      "○",
 		Unknown:   "·",
-		Exited:    "○",
+		Exited:    "◌",
 		Unread:    "•",
 		Workspace: "▪",
 		Branch:    "⑂",
@@ -68,7 +71,7 @@ var themes = map[string]Set{
 		Tab:       "▭",
 	},
 	ThemeASCII: {
-		Blocked:   "!",
+		Blocked:   "*",
 		Done:      "*",
 		Idle:      "o",
 		Unknown:   ".",

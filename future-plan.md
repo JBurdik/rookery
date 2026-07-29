@@ -34,11 +34,14 @@ present here, and in places ours goes further:
   aggregate status glyph (blocked/working/done/idle/unknown) instead of a
   fixed dot, matching Herdr's `state_dot` — a workspace with a blocked agent
   inside now looks different from an idle one even with colour off.
-- Not ported: Herdr's separate `agent_icon` (bullseye for blocked, checkmark
-  for seen-done) vs `state_dot` (plain dot) split between its two panels.
-  Ours already gives blocked/done/idle distinct glyphs project-wide via
-  `icons.Set`, so a second, view-specific glyph set would be a fourth way to
-  say the same five states — skipped as needless duplication.
+- Update (2026-07-29): reverses the note above. Per direct user request, the
+  `unicode` theme now deliberately matches Herdr's `state_dot` scheme:
+  Blocked/Working/Done all share the filled-dot glyph, Idle gets a hollow
+  ring, Unknown stays a middle dot — distinguished only by color (see
+  `Colors` in `config.go`), same as Herdr. `Exited` moved off the dot glyph
+  (now `◌`) since Idle took over the filled dot's old slot. `ascii` got the
+  matching plain-ASCII update (`Blocked` → `*`, same as `Done`). `nerd` was
+  left alone since its glyphs are already distinct shapes with no collision.
 
 ## Open questions to revisit later
 
