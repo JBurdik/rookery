@@ -104,7 +104,7 @@ func handleConn(conn net.Conn, loop *state.Loop) {
 			loop.NotifyAttachCmd(id, msg.Type, msg.Label, msg.Cmd, msg.Direction)
 		case attachproto.TypeClosePane:
 			loop.NotifyAttachCmd(id, msg.Type, msg.PaneID, "", "")
-		case attachproto.TypeMoveFocus, attachproto.TypeResizePane:
+		case attachproto.TypeMoveFocus, attachproto.TypeResizePane, attachproto.TypeSwapPane:
 			loop.NotifyAttachCmd(id, msg.Type, "", "", msg.Direction)
 		case attachproto.TypeClientFocus:
 			loop.NotifyClientFocus(id, msg.Focused)

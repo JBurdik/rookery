@@ -581,10 +581,11 @@ var helpLeft = []helpEntry{
 	{config.ActionFocusDown, "focus down"},
 	{config.ActionFocusUp, "focus up"},
 	{config.ActionFocusRight, "focus right"},
-	{config.ActionResizeLeft, "resize left"},
-	{config.ActionResizeRight, "resize right"},
-	{config.ActionResizeUp, "resize up"},
-	{config.ActionResizeDown, "resize down"},
+	{config.ActionSwapLeft, "swap left"},
+	{config.ActionSwapRight, "swap right"},
+	{config.ActionSwapUp, "swap up"},
+	{config.ActionSwapDown, "swap down"},
+	{config.ActionResizeMode, "resize mode"},
 }
 
 var helpRight = []helpEntry{

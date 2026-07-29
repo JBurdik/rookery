@@ -495,10 +495,10 @@ your own keymap.
 | `[` / `esc` | scroll & copy mode | | `f` / `/` | go to (fuzzy) |
 | `v` / `-` | split right / down | | `m` | toggle mouse capture |
 | `h` `j` `k` `l` | move focus | | `?` | help |
-| `H` `J` `K` `L` | resize | | `q` | detach |
+| `H` `J` `K` `L` | swap pane | | `q` | detach |
 | `z` | zoom pane | | `ctrl+b` | send a literal `ctrl+b` |
 | `x` | close pane | | `R` | rename workspace |
-| `r` | rename pane | | | |
+| `r` | rename pane | | `s` | resize mode |
 
 Arrows work anywhere the `hjkl` do. Everything is remappable in
 `~/.rook/hotkeys.json`, the prefix included:

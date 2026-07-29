@@ -659,6 +659,25 @@ func (l *Loop) resizeSplit(paneID, direction string, amountCells int) {
 	}
 }
 
+// swapPane exchanges paneID with its neighbor in a direction, keeping both
+// panes' content and process intact — only their positions/sizes in the
+// split tree change. Focus stays on paneID, which now sits where the
+// neighbor was.
+func (l *Loop) swapPane(paneID, direction string) {
+	tab := l.app.activeTab()
+	if tab == nil {
+		return
+	}
+	next := Neighbor(l.app.rects(), paneID, direction)
+	if next == "" {
+		return
+	}
+	if tab.layout.Swap(paneID, next) {
+		l.app.dirty = true
+		l.broadcastState()
+	}
+}
+
 func (l *Loop) paneSendKeys(id string, p apiproto.PaneSendKeysParams) apiproto.Response {
 	pane := l.app.resolvePane(p.PaneID)
 	if pane == nil {

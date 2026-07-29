@@ -102,6 +102,32 @@ func TestLayoutResize(t *testing.T) {
 	}
 }
 
+func TestLayoutSwap(t *testing.T) {
+	l := newLeaf("p1")
+	l.Split("p1", "p2", dirHorizontal)
+	area := Rect{X: 0, Y: 0, W: 81, H: 24}
+
+	before := l.Rects(area)
+	if !l.Swap("p1", "p2") {
+		t.Fatal("Swap reported no change")
+	}
+	after := l.Rects(area)
+
+	// p1 now sits where p2 was, and vice versa: content stays put per pane
+	// ID, only the position each holds in the tree changes.
+	if after["p1"] != before["p2"] {
+		t.Errorf("p1 rect = %+v, want p2's old rect %+v", after["p1"], before["p2"])
+	}
+	if after["p2"] != before["p1"] {
+		t.Errorf("p2 rect = %+v, want p1's old rect %+v", after["p2"], before["p1"])
+	}
+	assertNoOverlap(t, after, area)
+
+	if l.Swap("p1", "does-not-exist") {
+		t.Error("Swap with an unknown pane reported success")
+	}
+}
+
 func TestNeighbor(t *testing.T) {
 	// p1 | p2
 	//    | p3
