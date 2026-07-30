@@ -84,12 +84,20 @@ func paneContentRect(r Rect, withHeader, withBorder bool) Rect {
 // it. Panes are resized to fit their rectangle as a side effect: the layout
 // is the authority on how big a terminal is, so this is the one place that
 // pushes that size down into the emulator and the PTY.
-func (l *Loop) buildFrame() attachproto.Frame {
+// The layout is laid out in the shared area (the smallest attached client),
+// but the canvas is the size of the client this frame is for: a bigger client
+// gets the layout plus blank space rather than a frame it has to pad itself,
+// and a client that shrank between two ticks has its frame clipped by the
+// canvas rather than overflowing its screen.
+func (l *Loop) buildFrame(cols, rows int) attachproto.Frame {
 	area := l.app.area()
-	canvas := termgrid.NewCanvas(area.W, area.H)
+	if cols <= 0 || rows <= 0 {
+		cols, rows = area.W, area.H
+	}
+	canvas := termgrid.NewCanvas(cols, rows)
 	tab := l.app.activeTab()
 	if tab == nil {
-		return attachproto.Frame{Type: attachproto.TypeFrame, Cols: area.W, Rows: area.H, ANSI: canvas.RenderANSI()}
+		return attachproto.Frame{Type: attachproto.TypeFrame, Cols: cols, Rows: rows, ANSI: canvas.RenderANSI()}
 	}
 
 	rects := l.app.rects()
@@ -147,8 +155,8 @@ func (l *Loop) buildFrame() attachproto.Frame {
 	return attachproto.Frame{
 		Type:     attachproto.TypeFrame,
 		PaneID:   focus,
-		Cols:     area.W,
-		Rows:     area.H,
+		Cols:     cols,
+		Rows:     rows,
 		ANSI:     canvas.RenderANSI(),
 		CursorX:  cursorX,
 		CursorY:  cursorY,
@@ -309,7 +317,9 @@ func (l *Loop) resizePane(pane *Pane, cols, rows int) {
 		return
 	}
 	pane.Grid.Resize(cols, rows)
-	_ = pane.Actor.Resize(cols, rows)
+	if pane.Actor != nil {
+		_ = pane.Actor.Resize(cols, rows)
+	}
 }
 
 // frameRevision is the sum of every pane's revision, so a client can tell

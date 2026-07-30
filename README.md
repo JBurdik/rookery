@@ -25,6 +25,20 @@ SSH owns authentication, host aliases and connection recovery. This is
 deliberately not a network-exposed Rook socket: the remote daemon continues to
 use its local Unix sockets and SSH carries only the interactive terminal.
 
+## Several clients at once
+
+Any number of clients can be attached to one session, each with its own
+terminal size: every client is sent a frame rendered for its own dimensions,
+so nobody's screen is clipped and nobody has to pad one.
+
+The pane *layout* is shared, and sized to the smallest attached client on each
+axis — a wider client sees blank space to the right of the panes rather than
+wider panes. That is not a shortcut: a pane is one process on one PTY, a PTY
+has one size, and a program that wraps its own output or redraws a full screen
+can only be correct at one width. tmux takes the same position for the same
+reason. Detaching everybody keeps the last size rather than resetting to
+80x24, so nothing in the session redraws just because you left.
+
 ## Installing it
 
 ```
