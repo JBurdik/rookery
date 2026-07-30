@@ -26,6 +26,8 @@ func RunPane(args []string) error {
 		return paneList(args[1:])
 	case "new", "create", "split":
 		return paneNew(args[1:])
+	case "resume":
+		return paneResume(args[1:])
 	case "send", "run":
 		return paneRun(args[1:])
 	case "send-text":
@@ -101,6 +103,39 @@ func paneNew(args []string) error {
 		params.Cmd, params.Args = cmdline[0], cmdline[1:]
 	}
 	return callAndPrint(fs.session, "pane.create", params)
+}
+
+// paneResume starts a fresh pane attached to a known agent session. It has no
+// command tail: the daemon chooses the fixed resume syntax for the agent.
+func paneResume(args []string) error {
+	fs := newPaneFlags("pane resume")
+	source := fs.set.String("source", "", "pane with recorded agent and session metadata")
+	agent := fs.set.String("agent", "", "agent to resume: claude | codex | opencode")
+	sessionRef := fs.set.String("session-ref", "", "agent session id to resume")
+	label := fs.set.String("label", "", "human-readable pane label")
+	cwd := fs.set.String("cwd", "", "working directory for the resumed agent")
+	cols := fs.set.Int("cols", 0, "initial terminal width")
+	rows := fs.set.Int("rows", 0, "initial terminal height")
+	direction := fs.set.String("direction", "", "split direction: right | down")
+	from := fs.set.String("from", "", "pane to split (default: the focused pane)")
+	noFocus := fs.set.Bool("no-focus", false, "create the pane without moving focus to it")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	if rest := fs.args(); len(rest) != 0 {
+		return errors.New("usage: rook pane resume (--source <pane-id> | --agent <agent> --session-ref <id>) [options]")
+	}
+	if *source == "" && (*agent == "" || *sessionRef == "") {
+		return errors.New("resume needs --source, or both --agent and --session-ref")
+	}
+	if *source != "" && (*agent == "") != (*sessionRef == "") {
+		return errors.New("with --source, provide both --agent and --session-ref or neither")
+	}
+	return callAndPrint(fs.session, "pane.resume", apiproto.PaneResumeParams{
+		SourcePaneID: *source, Agent: *agent, SessionRef: *sessionRef,
+		Label: *label, Cwd: *cwd, Cols: *cols, Rows: *rows, Direction: *direction,
+		From: *from, NoFocus: *noFocus,
+	})
 }
 
 func paneRename(args []string) error {
@@ -493,6 +528,8 @@ func paneUsage() {
 Usage:
   rook pane ls                                   list panes (JSON)
   rook pane new [flags] [-- cmd args...]         spawn a pane (no cmd = $SHELL)
+  rook pane resume --source PANE [flags]          resume recorded agent session in a new pane
+  rook pane resume --agent AGENT --session-ref ID resume an explicit known session
   rook pane run <pane> [text...]                 type into a pane, then Enter
   rook pane send-text <pane> <text...>           type literally, without Enter
   rook pane send-keys <pane> <key...>            send Enter, C-c, arrows, etc.
@@ -523,8 +560,15 @@ pane read:
   --lines N         with --scrollback, last N lines
   --ansi            keep styling       --raw          print text, not JSON
 
+pane resume (no arbitrary command arguments):
+  --source PANE             use the agent/session reported by that pane
+  --agent claude|codex|opencode --session-ref ID
+                            resume an explicit supported agent session
+  --cwd DIR --label NAME --direction right|down --from PANE --no-focus
+
 Examples:
   rook pane new --label reviewer --no-focus -- claude
+  rook pane resume --source w1:p2 --no-focus
   rook pane run p2 review the current diff
   rook wait agent-status p2 --status done,blocked --timeout 120000
   rook pane read p2 --scrollback --lines 60 --raw

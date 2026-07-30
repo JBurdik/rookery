@@ -22,7 +22,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	tab.focus = "w1:p2"
 	tab.zoom = true
 	for _, id := range []string{"w1:p1", "w1:p2", "w1:p3"} {
-		l.app.panes[id] = &Pane{ID: id, Cmd: "/bin/zsh", Cwd: "/tmp/api"}
+		l.app.panes[id] = &Pane{ID: id, Cmd: "/bin/zsh", Cwd: "/tmp/api", Agent: "codex", AgentSession: "session-" + id}
 	}
 	l.app.newWorkspace("", "/tmp/web").addTab("")
 
@@ -61,6 +61,9 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 	if len(got.Panes) != 3 {
 		t.Errorf("got %d pane records, want 3", len(got.Panes))
+	}
+	if got.Panes[0].Agent != "codex" || got.Panes[0].SessionRef != "session-w1:p1" {
+		t.Errorf("resume metadata = %+v, want codex/session-w1:p1", got.Panes[0])
 	}
 }
 

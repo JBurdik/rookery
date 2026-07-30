@@ -143,7 +143,11 @@ type PaneInfo struct {
 	Status      string   `json:"status"` // "running" | "exited"
 	// Agent is the detected agent ("claude", "codex", …), empty for a plain
 	// command. AgentStatus is one of unknown/idle/working/blocked/done.
-	Agent       string `json:"agent,omitempty"`
+	Agent string `json:"agent,omitempty"`
+	// SessionRef is the session identifier the agent integration reported. It
+	// is only meaningful for supported agents and can be supplied to
+	// pane.resume; Rookery never discovers or invents one.
+	SessionRef  string `json:"session_ref,omitempty"`
 	AgentStatus string `json:"agent_status"`
 	ExitCode    *int   `json:"exit_code,omitempty"`
 	Cols        int    `json:"cols"`
@@ -171,6 +175,30 @@ type PaneCreateParams struct {
 	Direction string `json:"direction,omitempty"`
 	// NoFocus creates the pane without moving the user's focus to it.
 	NoFocus bool `json:"no_focus,omitempty"`
+
+	// These are daemon-internal state set only by pane.resume. They are not part
+	// of pane.create's wire surface, so API callers cannot smuggle a session
+	// identity into arbitrary commands.
+	Agent        string `json:"-"`
+	AgentSession string `json:"-"`
+}
+
+// PaneResumeParams creates one pane running a fixed, documented resume
+// command. Agent and SessionRef must be supplied together, or SourcePaneID can
+// name an existing pane whose integration previously recorded both values.
+// Cmd and Args are intentionally absent: resume never accepts a command line
+// to reinterpret.
+type PaneResumeParams struct {
+	SourcePaneID string `json:"source_pane_id,omitempty"`
+	Agent        string `json:"agent,omitempty"`
+	SessionRef   string `json:"session_ref,omitempty"`
+	Cwd          string `json:"cwd,omitempty"`
+	Label        string `json:"label,omitempty"`
+	Cols         int    `json:"cols,omitempty"`
+	Rows         int    `json:"rows,omitempty"`
+	From         string `json:"from,omitempty"`
+	Direction    string `json:"direction,omitempty"`
+	NoFocus      bool   `json:"no_focus,omitempty"`
 }
 
 // --- pane.rename ---

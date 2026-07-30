@@ -301,6 +301,31 @@ of its own to merge into. Reinstalling overwrites it; uninstall removes it
 only if it still carries rookery's marker, so a plugin you wrote by hand at
 the same path is left alone.
 
+### Resume a recorded agent session
+
+Rookery never relaunches commands on daemon restart. To reopen a conversation,
+create a new pane explicitly. Integration-reported session IDs are retained in
+the saved layout, so a prior pane can be the source:
+
+```bash
+rook pane resume --source w1:p2 --no-focus
+```
+
+You can also name a supported agent and its known session ID directly:
+
+```bash
+rook pane resume --agent claude --session-ref abc123
+rook pane resume --agent codex --session-ref 550e8400-e29b-41d4-a716-446655440000
+rook pane resume --agent opencode --session-ref ses_abc123
+```
+
+Only Claude, Codex, and OpenCode are accepted. Rookery runs exactly one
+documented interactive command for each (`claude --resume ID`, `codex resume
+ID`, or `opencode --session ID`); resume accepts neither a custom command nor
+extra command arguments. A source pane must have matching recorded metadata,
+and any supplied metadata must match it. `rook pane ls --all` includes
+`session_ref` when an integration reported one.
+
 #### Several configurations at once
 
 Having more than one live config is normal — a relocated config directory for

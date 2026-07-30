@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jirkab/rookery/internal/agentresume"
 	"github.com/jirkab/rookery/internal/agentstatus"
 	"github.com/jirkab/rookery/internal/apiproto"
 	"github.com/jirkab/rookery/internal/attachproto"
@@ -170,6 +171,13 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
 		}
 		return l.paneCreate(req.ID, p), false
+
+	case "pane.resume":
+		var p apiproto.PaneResumeParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneResume(req.ID, p), false
 
 	case "pane.close":
 		var p apiproto.PaneCloseParams
@@ -674,6 +682,42 @@ func (l *Loop) paneCreate(id string, p apiproto.PaneCreateParams) apiproto.Respo
 	l.emitPaneEvent(apiproto.EventPaneNew, pane)
 	l.broadcastState()
 	return ok(id, l.paneInfo(pane))
+}
+
+// paneResume creates a pane using only an invocation from agentresume. The
+// agent's CLI sees a session id as one literal argument; there is no shell and
+// no user controlled Args field on the API to turn a resume into another
+// command.
+func (l *Loop) paneResume(id string, p apiproto.PaneResumeParams) apiproto.Response {
+	agent, sessionRef := p.Agent, p.SessionRef
+	if p.SourcePaneID != "" {
+		source := l.app.resolvePane(p.SourcePaneID)
+		if source == nil {
+			return errResp(id, apiproto.ErrPaneNotFound, "no such source pane: "+p.SourcePaneID)
+		}
+		if agent == "" {
+			agent = source.Agent
+		} else if source.Agent != "" && agent != source.Agent {
+			return errResp(id, apiproto.ErrInvalidParams, "agent does not match source pane")
+		}
+		if sessionRef == "" {
+			sessionRef = source.AgentSession
+		} else if source.AgentSession != "" && sessionRef != source.AgentSession {
+			return errResp(id, apiproto.ErrInvalidParams, "session_ref does not match source pane")
+		}
+		if p.Cwd == "" {
+			p.Cwd = source.Cwd
+		}
+	}
+	cmd, err := agentresume.CommandFor(agent, sessionRef)
+	if err != nil {
+		return errResp(id, apiproto.ErrInvalidParams, err.Error())
+	}
+	return l.paneCreate(id, apiproto.PaneCreateParams{
+		Cmd: cmd.Cmd, Args: cmd.Args, Cwd: p.Cwd, Label: p.Label,
+		Cols: p.Cols, Rows: p.Rows, From: p.From, Direction: p.Direction,
+		NoFocus: p.NoFocus, Agent: agent, AgentSession: sessionRef,
+	})
 }
 
 // checkSplitFits refuses a split that would leave either side too small to
