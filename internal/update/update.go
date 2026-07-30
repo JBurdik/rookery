@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Repository   = "JBurdik/multiplexer"
+	Repository   = "JBurdik/rookery"
 	apiBase      = "https://api.github.com"
 	downloadBase = "https://github.com"
 )

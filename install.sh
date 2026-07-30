@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install rookery's `rook` command from the current main branch.
-# Usage: curl -fsSL https://raw.githubusercontent.com/JBurdik/multiplexer/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/JBurdik/rookery/main/install.sh | sh
 
 set -eu
 
@@ -12,7 +12,7 @@ fi
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/rookery-install.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
-curl -fsSL https://github.com/JBurdik/multiplexer/archive/refs/heads/main.tar.gz \
+curl -fsSL https://github.com/JBurdik/rookery/archive/refs/heads/main.tar.gz \
   | tar -xz -C "$work_dir" --strip-components=1
 
 (cd "$work_dir" && go install ./cmd/rook)
