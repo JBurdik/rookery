@@ -8,6 +8,7 @@ package tui
 import (
 	"fmt"
 	"net"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -43,6 +44,16 @@ func Run(sessionName, version string) error {
 		// and reporting every pointer move would flood the socket.
 		opts = append(opts, tea.WithMouseCellMotion())
 	}
+	// Bubble Tea deliberately ignores unknown CSI sequences. That is normally
+	// sensible, but it includes Kitty's CSI-u keyboard events. Put a very small
+	// bridge in front of its reader so enhanced keys can still reach both Rook's
+	// bindings and the focused PTY.
+	input := newInputBridge(os.Stdin, func(msg tea.Msg) {
+		if m.program != nil {
+			m.program.Send(msg)
+		}
+	})
+	opts = append(opts, tea.WithInput(input))
 	p := tea.NewProgram(m, opts...)
 	m.program = p
 
@@ -77,6 +88,16 @@ type connErrMsg struct{ err error }
 // modified cursor, Home/End, and Page keys for word movement and selection.
 func keyToBytes(k tea.KeyMsg) []byte {
 	var out []byte
+	if k.Paste {
+		// Bubble Tea removes the terminal's delimiters while decoding a
+		// bracketed paste. The pane is the terminal application, though, so it
+		// must receive those delimiters just as it would without Rook in front
+		// of it. This also keeps pasted control characters from becoming Rook
+		// bindings.
+		out = append(out, "\x1b[200~"...)
+		out = append(out, []byte(string(k.Runes))...)
+		return append(out, "\x1b[201~"...)
+	}
 
 	switch {
 	case k.Type == tea.KeyRunes:

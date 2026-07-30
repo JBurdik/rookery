@@ -186,6 +186,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
+	case enhancedKeyMsg:
+		return m.handleEnhancedKey(msg)
+
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 
@@ -234,6 +237,29 @@ func (m *model) paneCols() int {
 // --- keys ---
 
 func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	return m.handleKeyInput(msg, nil)
+}
+
+// handleEnhancedKey keeps Rook's bindings working for Kitty events while
+// preserving the original CSI-u bytes for the pane. The latter is important:
+// a program that requested enhanced keyboard reporting must not be silently
+// downgraded to a lossy legacy key sequence by the multiplexer.
+func (m *model) handleEnhancedKey(msg enhancedKeyMsg) (tea.Model, tea.Cmd) {
+	if !msg.hasKey {
+		if !m.inputCaptured() {
+			m.send(attachproto.Input{Type: attachproto.TypeInput, Data: string(msg.data)})
+		}
+		return m, nil
+	}
+	return m.handleKeyInput(msg.key, msg.data)
+}
+
+func (m *model) inputCaptured() bool {
+	return m.helpMode || m.pickerOpen || m.menuOpen || m.promptMode || m.navMode ||
+		m.copyMode || m.resizeMode || m.prefixMode
+}
+
+func (m *model) handleKeyInput(msg tea.KeyMsg, enhanced []byte) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch {
@@ -265,7 +291,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.statusMsg = ""
-	if data := keyToBytes(msg); len(data) > 0 {
+	data := enhanced
+	if len(data) == 0 {
+		data = keyToBytes(msg)
+	}
+	if len(data) > 0 {
 		m.send(attachproto.Input{Type: attachproto.TypeInput, Data: string(data)})
 	}
 	return m, nil

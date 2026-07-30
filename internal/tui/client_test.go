@@ -13,6 +13,7 @@ func TestKeyToBytes(t *testing.T) {
 		want string
 	}{
 		{"runes", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("λ")}, "λ"},
+		{"bracketed paste", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a\x03\nb"), Paste: true}, "\x1b[200~a\x03\nb\x1b[201~"},
 		{"alt rune", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x"), Alt: true}, "\x1bx"},
 		{"ctrl c", tea.KeyMsg{Type: tea.KeyCtrlC}, "\x03"},
 		{"alt ctrl c", tea.KeyMsg{Type: tea.KeyCtrlC, Alt: true}, "\x1b\x03"},
