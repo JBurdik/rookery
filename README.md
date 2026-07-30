@@ -29,7 +29,7 @@ and worktree-backed fan-out — all without exposing a network socket.
 ## Start here
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JBurdik/multiplexer/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/JBurdik/rookery/main/install.sh | sh
 rook setup                     # connect your coding agent
 rook                            # open the default session
 ```
