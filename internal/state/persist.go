@@ -60,6 +60,10 @@ type paneSnap struct {
 	Cmd   string   `json:"cmd,omitempty"`
 	Args  []string `json:"args,omitempty"`
 	Cwd   string   `json:"cwd,omitempty"`
+	// Agent and SessionRef are integration metadata, not live state. Keeping
+	// them lets an explicit pane.resume work after a daemon restart.
+	Agent      string `json:"agent,omitempty"`
+	SessionRef string `json:"session_ref,omitempty"`
 }
 
 // buildSnapshot captures the structure — and only the structure. Nothing in
@@ -87,7 +91,7 @@ func (l *Loop) buildSnapshot() snapshot {
 	slices.Sort(ids)
 	for _, id := range ids {
 		p := l.app.panes[id]
-		s.Panes = append(s.Panes, paneSnap{ID: p.ID, Label: p.Label, Cmd: p.Cmd, Args: p.Args, Cwd: p.Cwd})
+		s.Panes = append(s.Panes, paneSnap{ID: p.ID, Label: p.Label, Cmd: p.Cmd, Args: p.Args, Cwd: p.Cwd, Agent: p.Agent, SessionRef: p.AgentSession})
 	}
 	return s
 }
@@ -147,7 +151,7 @@ func (l *Loop) Restore() {
 					continue
 				}
 				if _, err := l.startPane(paneID, w, t, apiproto.PaneCreateParams{
-					Label: p.Label, Cwd: p.Cwd,
+					Label: p.Label, Cwd: p.Cwd, Agent: p.Agent, AgentSession: p.SessionRef,
 				}); err != nil {
 					// A pane whose directory has since been deleted must not
 					// take the rest of the layout down with it.
@@ -218,19 +222,25 @@ func (l *Loop) startPane(paneID string, w *Workspace, tab *Tab, p apiproto.PaneC
 	}
 
 	pane := &Pane{
-		ID:         paneID,
-		Label:      p.Label,
-		Cmd:        p.Cmd,
-		Args:       p.Args,
-		Cwd:        p.Cwd,
-		Grid:       termgrid.New(cols, rows),
-		Actor:      actor,
-		Status:     "running",
-		CreatedAt:  time.Now(),
-		Agent:      l.agents.Agent(p.Cmd, p.Args),
-		AgentState: agentstatus.Working, // starting up counts as busy
-		Seen:       true,
-		LastOutput: time.Now(),
+		ID:           paneID,
+		Label:        p.Label,
+		Cmd:          p.Cmd,
+		Args:         p.Args,
+		Cwd:          p.Cwd,
+		Grid:         termgrid.New(cols, rows),
+		Actor:        actor,
+		Status:       "running",
+		CreatedAt:    time.Now(),
+		Agent:        l.agents.Agent(p.Cmd, p.Args),
+		AgentSession: p.AgentSession,
+		AgentState:   agentstatus.Working, // starting up counts as busy
+		Seen:         true,
+		LastOutput:   time.Now(),
+	}
+	if pane.Agent == "" {
+		// A restored shell cannot be re-detected as its old agent, but its
+		// persisted metadata is still useful as a resume source.
+		pane.Agent = p.Agent
 	}
 	l.app.panes[paneID] = pane
 	return pane, nil

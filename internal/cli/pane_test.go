@@ -83,3 +83,11 @@ func TestEncodeKeys(t *testing.T) {
 		t.Errorf("encodeKeys = %q, want %q", got, want)
 	}
 }
+
+func TestPaneResumeRequiresKnownMetadata(t *testing.T) {
+	for _, args := range [][]string{{}, {"--agent", "claude"}, {"--session-ref", "session-1"}, {"--source", "p1", "--agent", "claude"}, {"unexpected-command"}} {
+		if err := paneResume(args); err == nil {
+			t.Errorf("paneResume(%q) succeeded without a complete safe target", args)
+		}
+	}
+}

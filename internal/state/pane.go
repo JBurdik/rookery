@@ -103,6 +103,7 @@ func (p *Pane) toInfo() apiproto.PaneInfo {
 		Cwd:         p.Cwd,
 		Status:      p.Status,
 		Agent:       p.Agent,
+		SessionRef:  p.AgentSession,
 		AgentStatus: string(p.agentStatus()),
 		Cols:        cols,
 		Rows:        rows,

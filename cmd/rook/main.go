@@ -115,6 +115,8 @@ Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait h
   rook tab ls|new|focus|rename|close              a layout of panes in a workspace
   rook pane ls                                    list panes, with agent status
   rook pane new [--label L] [-- cmd args...]      spawn a pane (splits the focused one)
+  rook pane resume --source PANE | --agent AGENT --session-ref ID
+                                                  resume a known Claude, Codex, or OpenCode session
   rook pane send <pane> [text...]                 type into a pane, then Enter
   rook pane read <pane> [--scrollback] [--raw]    read a pane's output
   rook pane focus|status|rename|kill <pane>       switch to / inspect / label / stop a pane

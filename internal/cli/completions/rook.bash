@@ -41,10 +41,11 @@ _rook()
             fi ;;
         pane)
             if (( COMP_CWORD == 2 )); then
-                COMPREPLY=( $(compgen -W "ls list new create split send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help" -- "$cur") )
+                COMPREPLY=( $(compgen -W "ls list new create split resume send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help" -- "$cur") )
             else
                 case "$subcommand" in
                     new|create|split) COMPREPLY=( $(compgen -W "$common_flags --label --cwd --cols --rows --direction --from --no-focus --current --env --help" -- "$cur") ) ;;
+                    resume) COMPREPLY=( $(compgen -W "$common_flags --source --agent --session-ref --label --cwd --cols --rows --direction --from --no-focus claude codex opencode --help" -- "$cur") ) ;;
                     send|run) COMPREPLY=( $(compgen -W "$common_flags --no-enter --help" -- "$cur") ) ;;
                     read) COMPREPLY=( $(compgen -W "$common_flags --scrollback --lines --ansi --raw --help" -- "$cur") ) ;;
                     neighbor) COMPREPLY=( $(compgen -W "$common_flags --direction left right up down --help" -- "$cur") ) ;;

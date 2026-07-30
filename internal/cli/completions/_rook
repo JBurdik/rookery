@@ -13,7 +13,7 @@ _rook() {
     'setup:run setup wizard' 'api:call an API method' 'kill:stop a session' 'ping:check liveness'
     'completion:print shell completion script' 'version:print version' 'help:show help'
   )
-  pane_commands=(ls list new create split send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help)
+  pane_commands=(ls list new create split resume send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help)
   tree_commands=(ls list new create focus rename close kill help)
   wait_commands=(agent-status status exit output help)
   fan_commands=(ls list status clean review promote help)
@@ -58,6 +58,7 @@ _rook() {
       fi
       case $words[3] in
         new|create|split) _arguments '--session=[session name]:session:' '--label=[pane label]:label:' '--cwd=[working directory]:directory:_files -/' '--cols=[terminal width]:columns:' '--rows=[terminal height]:rows:' '--direction=[split direction]:(right down)' '--from=[pane to split]:pane:' '--no-focus[do not focus new pane]' '--current[split current pane]' '--env=[environment variable]:KEY=VALUE:' ;;
+        resume) _arguments '--session=[session name]:session:' '--source=[source pane]:pane:' '--agent=[agent]:(claude codex opencode)' '--session-ref=[agent session id]:session:' '--label=[pane label]:label:' '--cwd=[working directory]:directory:_files -/' '--cols=[terminal width]:columns:' '--rows=[terminal height]:rows:' '--direction=[split direction]:(right down)' '--from=[pane to split]:pane:' '--no-focus[do not focus new pane]' ;;
         send|run) _arguments '--session=[session name]:session:' '--no-enter[do not append Enter]' ;;
         read) _arguments '--session=[session name]:session:' '--scrollback[read retained scrollback]' '--lines=[number of lines]:lines:' '--ansi[keep ANSI styling]' '--raw[print only pane text]' ;;
         neighbor) _arguments '--session=[session name]:session:' '--direction=[direction]:(left right up down)' ;;
