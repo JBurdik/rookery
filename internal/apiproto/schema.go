@@ -216,23 +216,13 @@ type PaneDebugResult struct {
 	Foreground  []string `json:"foreground,omitempty"`
 	Title       string   `json:"title"`
 	Bottom      []string `json:"bottom"`
-}
-
-// --- manager.send ---
-
-// ManagerSendParams hands a request to the manager agent, starting it if it
-// isn't running yet.
-type ManagerSendParams struct {
-	Text string `json:"text"`
-	// Cmd overrides which agent to start; empty uses the configured one.
-	Cmd string `json:"cmd,omitempty"`
-}
-
-// ManagerSendResult reports where the request went and how many are still
-// queued ahead of it.
-type ManagerSendResult struct {
-	PaneID string `json:"pane_id"`
-	Queued int    `json:"queued"`
+	// Reason describes the live detector path. Agent panes also identify the
+	// manifest rule that won, when one matched.
+	Reason       string `json:"reason"`
+	RuleID       string `json:"rule_id,omitempty"`
+	RuleSource   string `json:"rule_source,omitempty"`
+	RulePriority int    `json:"rule_priority,omitempty"`
+	RuleRegion   string `json:"rule_region,omitempty"`
 }
 
 // --- pane.report ---
@@ -249,6 +239,12 @@ type PaneReportParams struct {
 	SessionRef string `json:"session_ref,omitempty"`
 	// Agent names the integration, for diagnosis.
 	Agent string `json:"agent,omitempty"`
+	// KeepStatus leaves the pane's reported status untouched. For a report
+	// that only carries a session id (Codex's SessionStart, OpenCode's
+	// session.updated) sending Status at all would otherwise clear it back
+	// to screen detection, which is the opposite of what a session-only
+	// report means.
+	KeepStatus bool `json:"keep_status,omitempty"`
 }
 
 type PaneReportResult struct {
@@ -352,6 +348,49 @@ type FanCleanResult struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
+// FanReviewParams selects one candidate's patch, or all candidates when
+// Candidate is empty. A candidate is identified by its fan label or pane ID.
+type FanReviewParams struct {
+	Fan       string `json:"fan"`
+	Candidate string `json:"candidate,omitempty"`
+	Patch     bool   `json:"patch,omitempty"`
+}
+
+type FanReviewCandidate struct {
+	PaneID    string   `json:"pane_id"`
+	Label     string   `json:"label"`
+	Branch    string   `json:"branch"`
+	Base      string   `json:"base,omitempty"`
+	Commits   []string `json:"commits,omitempty"`
+	Files     []string `json:"files,omitempty"`
+	Diffstat  string   `json:"diffstat,omitempty"`
+	Dirty     bool     `json:"dirty"`
+	DirtyStat string   `json:"dirty_stat,omitempty"`
+	Patch     string   `json:"patch,omitempty"`
+}
+
+type FanReviewResult struct {
+	Fan        string               `json:"fan"`
+	Candidates []FanReviewCandidate `json:"candidates"`
+}
+
+// FanPromoteParams fast-forwards the originating workspace to a candidate.
+// Apply is deliberately required: callers can use the same endpoint to check
+// whether a candidate is promotable before changing the repository.
+type FanPromoteParams struct {
+	Fan       string `json:"fan"`
+	Candidate string `json:"candidate"`
+	Apply     bool   `json:"apply,omitempty"`
+}
+
+type FanPromoteResult struct {
+	Fan       string `json:"fan"`
+	Candidate string `json:"candidate"`
+	Branch    string `json:"branch"`
+	Applied   bool   `json:"applied"`
+	Message   string `json:"message"`
+}
+
 // --- wait.pane ---
 
 // WaitPaneParams blocks until a pane reaches one of the wanted states, or
@@ -376,6 +415,26 @@ type WaitPaneResult struct {
 	WaitedMS    int    `json:"waited_ms"`
 }
 
+// WaitOutputParams waits until the current screen or retained scrollback
+// matches Match (a literal substring) or Regex. Exactly one is required.
+type WaitOutputParams struct {
+	PaneID    string `json:"pane_id"`
+	Match     string `json:"match,omitempty"`
+	Regex     string `json:"regex,omitempty"`
+	Source    string `json:"source,omitempty"`
+	TimeoutMS int    `json:"timeout_ms,omitempty"`
+}
+
+type WaitOutputResult struct {
+	PaneID   string `json:"pane_id"`
+	Matched  bool   `json:"matched"`
+	Match    string `json:"match,omitempty"`
+	Source   string `json:"source"`
+	Revision uint64 `json:"revision"`
+	TimedOut bool   `json:"timed_out"`
+	WaitedMS int    `json:"waited_ms"`
+}
+
 // --- pane.close ---
 
 type PaneCloseParams struct {
@@ -390,6 +449,13 @@ type PaneCloseResult struct {
 
 // --- pane.send_keys ---
 
+// PaneSendTextParams writes text exactly as supplied. It never interprets key
+// names or submits the pane's composer; use pane.run to submit a prompt.
+type PaneSendTextParams struct {
+	PaneID string `json:"pane_id"`
+	Text   string `json:"text"`
+}
+
 type PaneSendKeysParams struct {
 	PaneID     string `json:"pane_id"`
 	Text       string `json:"text,omitempty"`
@@ -399,6 +465,55 @@ type PaneSendKeysParams struct {
 type PaneSendKeysResult struct {
 	OK           bool `json:"ok"`
 	BytesWritten int  `json:"bytes_written"`
+}
+
+// PaneRunParams is the intentional "send this prompt" operation. Keeping it
+// separate from send_text means automation cannot submit work by accident.
+type PaneRunParams struct {
+	PaneID string `json:"pane_id"`
+	Text   string `json:"text"`
+}
+
+// --- pane.inspect / pane.neighbor / pane.move ---
+
+type PaneInspectParams struct {
+	PaneID string `json:"pane_id"`
+}
+type PaneRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+type PaneInspectResult struct {
+	Pane      PaneInfo          `json:"pane"`
+	Focused   bool              `json:"focused"`
+	Zoomed    bool              `json:"zoomed"`
+	Rect      *PaneRect         `json:"rect,omitempty"`
+	Neighbors map[string]string `json:"neighbors"`
+}
+type PaneNeighborParams struct {
+	PaneID    string `json:"pane_id"`
+	Direction string `json:"direction"`
+}
+type PaneNeighborResult struct {
+	PaneID     string `json:"pane_id"`
+	Direction  string `json:"direction"`
+	NeighborID string `json:"neighbor_id,omitempty"`
+}
+
+// PaneMoveParams moves an existing PTY into another tab. From is the
+// destination pane to split, defaulting to that tab's focused pane.
+type PaneMoveParams struct {
+	PaneID    string `json:"pane_id"`
+	TabID     string `json:"tab_id"`
+	From      string `json:"from,omitempty"`
+	Direction string `json:"direction,omitempty"`
+	NoFocus   bool   `json:"no_focus,omitempty"`
+}
+type PaneMoveResult struct {
+	PaneID string `json:"pane_id"`
+	TabID  string `json:"tab_id"`
 }
 
 // --- pane.read ---
@@ -448,8 +563,14 @@ type PaneFocusResult struct {
 	Focused bool   `json:"focused"`
 }
 
-// --- server.shutdown ---
+// --- server lifecycle ---
 
 type ServerShutdownResult struct {
+	OK bool `json:"ok"`
+}
+
+// ServerReloadResult confirms that a daemon re-read its configuration and
+// agent manifests without interrupting any panes.
+type ServerReloadResult struct {
 	OK bool `json:"ok"`
 }

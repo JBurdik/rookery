@@ -33,6 +33,19 @@ type Tree struct {
 	Ahead int `json:"ahead"`
 }
 
+// Review is the committed contribution of one fan candidate relative to the
+// repository it was fanned from. Dirty is deliberately separate: an
+// uncommitted answer can be inspected, but cannot safely be promoted.
+type Review struct {
+	Base      string   `json:"base"`
+	Commits   []string `json:"commits,omitempty"`
+	Files     []string `json:"files,omitempty"`
+	Diffstat  string   `json:"diffstat,omitempty"`
+	Dirty     bool     `json:"dirty"`
+	DirtyStat string   `json:"dirty_stat,omitempty"`
+	Patch     string   `json:"patch,omitempty"`
+}
+
 // Manager creates and removes worktrees under a root directory.
 type Manager struct {
 	Root string // where worktrees are created
@@ -213,6 +226,69 @@ func Diffstat(path string) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+// ReviewBranch describes branch's committed change since its merge-base with
+// repo's current HEAD. includePatch is opt-in because a patch can be large;
+// the normal review view is intentionally compact enough to compare several
+// candidates at once.
+func ReviewBranch(repo, branch, path string, includePatch bool) (Review, error) {
+	repo, err := RepoRoot(repo)
+	if err != nil {
+		return Review{}, err
+	}
+	base, err := run(repo, "merge-base", "HEAD", branch)
+	if err != nil {
+		return Review{}, fmt.Errorf("find candidate base: %w", err)
+	}
+	r := Review{Base: shortSha(base), Dirty: isDirty(path), DirtyStat: Diffstat(path)}
+	if out, err := run(repo, "log", "--format=%h %s", base+".."+branch); err == nil {
+		r.Commits = nonEmptyLines(out)
+	}
+	if out, err := run(repo, "diff", "--name-status", base+"..."+branch); err == nil {
+		r.Files = nonEmptyLines(out)
+	}
+	if out, err := run(repo, "diff", "--shortstat", base+"..."+branch); err == nil {
+		r.Diffstat = out
+	}
+	if includePatch {
+		out, err := run(repo, "diff", "--binary", base+"..."+branch)
+		if err != nil {
+			return Review{}, fmt.Errorf("build candidate patch: %w", err)
+		}
+		r.Patch = out
+	}
+	return r, nil
+}
+
+// Promote fast-forwards repo to candidate. It refuses dirty checkouts and
+// non-fast-forward histories: a fan picker must never manufacture a merge
+// conflict or discard a user's in-progress work. Callers retain all fan
+// worktrees, so the result is reversible with ordinary git tools.
+func Promote(repo string, candidate Tree) error {
+	repo, err := RepoRoot(repo)
+	if err != nil {
+		return err
+	}
+	if candidate.Branch == "" || candidate.Path == "" {
+		return errors.New("candidate has no worktree branch")
+	}
+	if isDirty(repo) {
+		return errors.New("source repository has uncommitted changes; commit or stash them before promoting")
+	}
+	if isDirty(candidate.Path) {
+		return fmt.Errorf("candidate %q has uncommitted changes; commit them before promoting", candidate.Name)
+	}
+	if _, err := run(repo, "merge-base", "--is-ancestor", candidate.Branch, "HEAD"); err == nil {
+		return fmt.Errorf("candidate %q has no committed changes to promote", candidate.Name)
+	}
+	if _, err := run(repo, "merge-base", "--is-ancestor", "HEAD", candidate.Branch); err != nil {
+		return fmt.Errorf("candidate %q cannot fast-forward the current branch; merge %s manually after reviewing it", candidate.Name, candidate.Branch)
+	}
+	if _, err := run(repo, "merge", "--ff-only", candidate.Branch); err != nil {
+		return fmt.Errorf("fast-forward %s: %w", candidate.Branch, err)
+	}
+	return nil
 }
 
 func nonEmptyLines(s string) []string {

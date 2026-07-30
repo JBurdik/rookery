@@ -6,7 +6,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jirkab/rookery/internal/attachproto"
+	"github.com/jirkab/rookery/internal/config"
+	"github.com/jirkab/rookery/internal/icons"
 )
+
+func testModel() *model {
+	cfg := config.DefaultConfig()
+	return &model{
+		width: 60, height: 20,
+		cfg:           cfg,
+		keys:          config.DefaultHotkeys(),
+		icons:         icons.For("ascii"),
+		spinner:       icons.SpinnerFor(cfg.UI.Spinner),
+		p:             newPalette(cfg.UI.Colors),
+		sidebarHidden: true,
+	}
+}
 
 func rightPress(x, y int) tea.MouseMsg {
 	return tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonRight, Action: tea.MouseActionPress}

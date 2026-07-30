@@ -68,10 +68,6 @@ type UI struct {
 	// finishes, so a result landing on the screen you are already looking at
 	// still registers.
 	Blink *bool `json:"blink,omitempty"`
-	// ManagerCmd is the agent the manager bar talks to. It runs in its own
-	// tab with rookery's CLI on PATH, so it can create panes, read them and
-	// wait on them — you describe what you want, it drives the multiplexer.
-	ManagerCmd string `json:"manager_cmd"`
 	// Colors is the palette; anything left out keeps its default.
 	Colors Colors `json:"colors"`
 	// Sound pings you when an agent finishes or gets stuck.
@@ -123,7 +119,6 @@ const (
 	ActionDetach          = "detach"
 	ActionHelp            = "help"
 	ActionGit             = "git"
-	ActionManager         = "manager"
 	ActionLiteralPrefix   = "literal_prefix"
 )
 
@@ -137,7 +132,6 @@ func DefaultConfig() Config {
 		Icons:                 icons.ThemeUnicode,
 		Spinner:               "dots",
 		PaneBorders:           "auto",
-		ManagerCmd:            "claude",
 		Blink:                 boolPtr(true),
 		Colors:                DefaultColors(),
 		Sound:                 notify.DefaultConfig(),
@@ -183,7 +177,6 @@ func DefaultHotkeys() Hotkeys {
 			ActionDetach:          {"q", "d"},
 			ActionHelp:            {"?"},
 			ActionGit:             {"G"},
-			ActionManager:         {":", "a"},
 			ActionLiteralPrefix:   {"ctrl+b"},
 		},
 	}
@@ -215,9 +208,6 @@ func Load() (Config, Hotkeys, error) {
 	}
 	if cfg.UI.Blink == nil {
 		cfg.UI.Blink = boolPtr(true)
-	}
-	if cfg.UI.ManagerCmd == "" {
-		cfg.UI.ManagerCmd = "claude"
 	}
 	if cfg.UI.PaneBorders == "" {
 		cfg.UI.PaneBorders = "auto"

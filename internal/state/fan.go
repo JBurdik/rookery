@@ -104,7 +104,7 @@ func (l *Loop) fanStart(id string, p apiproto.FanStartParams) apiproto.Response 
 
 		// Queued, not written: an agent that has not finished starting loses
 		// whatever you type at it.
-		l.queueSend(pane.ID, p.Prompt, false)
+		l.queueSend(pane.ID, p.Prompt)
 
 		result.Panes = append(result.Panes, apiproto.FanPane{
 			PaneID:   pane.ID,
@@ -217,6 +217,85 @@ func (l *Loop) fanClean(id string, p apiproto.FanCleanParams) apiproto.Response 
 		result.Removed++
 	}
 	result.Problems = problems
+	l.app.dirty = true
+	l.broadcastState()
+	return ok(id, result)
+}
+
+// fanReview gives a branch-level comparison of candidates. It reads git state
+// only; agents may continue running while someone inspects their work.
+func (l *Loop) fanReview(id string, p apiproto.FanReviewParams) apiproto.Response {
+	if p.Fan == "" {
+		return errResp(id, apiproto.ErrInvalidParams, "fan name is required")
+	}
+	panes := l.fanPanes(p.Fan)
+	if panes == nil {
+		return errResp(id, apiproto.ErrNotFound, "no fan named "+p.Fan)
+	}
+	result := apiproto.FanReviewResult{Fan: p.Fan}
+	for _, pane := range panes {
+		if p.Candidate != "" && p.Candidate != pane.ID && p.Candidate != pane.Label {
+			continue
+		}
+		if pane.Worktree == "" || pane.Branch == "" {
+			return errResp(id, apiproto.ErrInvalidParams, "fan "+p.Fan+" was started with --no-worktree and has no branches to review")
+		}
+		w, _ := l.app.tabOf(pane.ID)
+		if w == nil {
+			return errResp(id, apiproto.ErrInternal, "could not find candidate workspace")
+		}
+		review, err := worktree.ReviewBranch(w.Cwd, pane.Branch, pane.Worktree, p.Patch)
+		if err != nil {
+			return errResp(id, apiproto.ErrInternal, err.Error())
+		}
+		result.Candidates = append(result.Candidates, apiproto.FanReviewCandidate{
+			PaneID: pane.ID, Label: pane.Label, Branch: pane.Branch,
+			Base: review.Base, Commits: review.Commits, Files: review.Files,
+			Diffstat: review.Diffstat, Dirty: review.Dirty, DirtyStat: review.DirtyStat,
+			Patch: review.Patch,
+		})
+	}
+	if p.Candidate != "" && len(result.Candidates) == 0 {
+		return errResp(id, apiproto.ErrNotFound, "no candidate "+p.Candidate+" in fan "+p.Fan)
+	}
+	return ok(id, result)
+}
+
+// fanPromote intentionally only fast-forwards. A candidate which no longer
+// applies cleanly is left for the user to merge manually, rather than turning
+// an otherwise safe fan command into a conflict-producing operation.
+func (l *Loop) fanPromote(id string, p apiproto.FanPromoteParams) apiproto.Response {
+	if p.Fan == "" || p.Candidate == "" {
+		return errResp(id, apiproto.ErrInvalidParams, "fan name and candidate are required")
+	}
+	var candidate *Pane
+	for _, pane := range l.fanPanes(p.Fan) {
+		if pane.ID == p.Candidate || pane.Label == p.Candidate {
+			candidate = pane
+			break
+		}
+	}
+	if candidate == nil {
+		return errResp(id, apiproto.ErrNotFound, "no candidate "+p.Candidate+" in fan "+p.Fan)
+	}
+	if candidate.Worktree == "" || candidate.Branch == "" {
+		return errResp(id, apiproto.ErrInvalidParams, "candidate has no worktree branch to promote")
+	}
+	w, _ := l.app.tabOf(candidate.ID)
+	if w == nil {
+		return errResp(id, apiproto.ErrInternal, "could not find candidate workspace")
+	}
+	result := apiproto.FanPromoteResult{Fan: p.Fan, Candidate: candidate.Label, Branch: candidate.Branch}
+	if !p.Apply {
+		result.Message = "dry run only; rerun with --apply to fast-forward the source branch. Fan worktrees are retained."
+		return ok(id, result)
+	}
+	tree := worktree.Tree{Name: candidate.Label, Path: candidate.Worktree, Branch: candidate.Branch}
+	if err := worktree.Promote(w.Cwd, tree); err != nil {
+		return errResp(id, apiproto.ErrInvalidParams, err.Error())
+	}
+	result.Applied = true
+	result.Message = "fast-forwarded source branch; fan worktrees were retained"
 	l.app.dirty = true
 	l.broadcastState()
 	return ok(id, result)

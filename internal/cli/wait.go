@@ -28,6 +28,8 @@ func RunWait(args []string) error {
 		return waitAgentStatus(args[1:])
 	case "exit":
 		return waitExit(args[1:])
+	case "output":
+		return waitOutput(args[1:])
 	case "-h", "--help", "help":
 		waitUsage()
 		return nil
@@ -35,6 +37,46 @@ func RunWait(args []string) error {
 		waitUsage()
 		return fmt.Errorf("wait: unknown subcommand %q", args[0])
 	}
+}
+
+func waitOutput(args []string) error {
+	fs := newPaneFlags("wait output")
+	match := fs.set.String("match", "", "literal text to wait for")
+	regex := fs.set.String("regex", "", "regular expression to wait for")
+	scrollback := fs.set.Bool("scrollback", false, "match retained scrollback instead of current screen")
+	timeout := fs.set.Int("timeout", 0, "milliseconds before giving up (0 = 5m default, -1 = wait forever)")
+	current := fs.set.Bool("current", false, "wait on the calling pane ($ROOK_PANE)")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	paneID, err := waitTarget(fs, *current)
+	if err != nil {
+		return err
+	}
+	if (*match == "") == (*regex == "") {
+		return errors.New("provide exactly one of --match or --regex")
+	}
+	source := "screen"
+	if *scrollback {
+		source = "scrollback"
+	}
+	params := apiproto.WaitOutputParams{PaneID: paneID, Match: *match, Regex: *regex, Source: source, TimeoutMS: *timeout}
+	resp, err := apiCallTimeout(fs.session, apiproto.Request{ID: "wait-output", Method: "wait.output", Params: mustJSON(params)}, waitDeadline(*timeout))
+	if err != nil {
+		return err
+	}
+	if resp.Result != nil {
+		if err := printJSON(resp.Result); err != nil {
+			return err
+		}
+	}
+	if resp.Error != nil {
+		if resp.Error.Code == apiproto.ErrTimeout {
+			os.Exit(1)
+		}
+		return respError(resp)
+	}
+	return nil
 }
 
 func waitAgentStatus(args []string) error {
@@ -155,6 +197,8 @@ func waitUsage() {
 Usage:
   rook wait agent-status <pane> --status done [--timeout MS]
   rook wait exit <pane> [--timeout MS]
+  rook wait output <pane> --match TEXT [--scrollback] [--timeout MS]
+  rook wait output <pane> --regex PATTERN [--timeout MS]
 
 Statuses:
   working   the agent is running a turn

@@ -1,0 +1,112 @@
+#compdef rook
+
+_rook() {
+  local -a root_commands pane_commands tree_commands wait_commands fan_commands integration_commands
+  root_commands=(
+    'serve:start or run a daemon' 'attach:attach to a session' 'ls:list sessions'
+    'status:show session status' 'reload:reload daemon configuration'
+    'delete:delete a stopped session' 'rm:alias for delete' 'session:session lifecycle aliases'
+    'workspace:manage workspaces' 'ws:alias for workspace' 'tab:manage tabs'
+    'pane:manage panes' 'wait:wait for a pane event' 'fan:fan work out to agents'
+    'watch:stream agent status events' 'git:open a git UI pane' 'agents:manage agent manifests'
+    'integration:manage agent hooks' 'report:report agent status' 'skill:install agent skill'
+    'setup:run setup wizard' 'api:call an API method' 'kill:stop a session' 'ping:check liveness'
+    'completion:print shell completion script' 'version:print version' 'help:show help'
+  )
+  pane_commands=(ls list new create split send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help)
+  tree_commands=(ls list new create focus rename close kill help)
+  wait_commands=(agent-status status exit output help)
+  fan_commands=(ls list status clean review promote help)
+  integration_commands=(status ls list install uninstall remove help)
+
+  if (( CURRENT == 2 )); then
+    _describe -t commands 'rook command' root_commands
+    return
+  fi
+
+  case $words[2] in
+    completion)
+      _arguments '1:shell:(bash zsh)'
+      ;;
+    serve)
+      _arguments '--session=[session name]:session:' '--foreground[run in foreground]' '-f[run in foreground]'
+      ;;
+    attach)
+      _arguments '1:session:' '--remote=[remote host]:host:' '-r=[remote host]:host:'
+      ;;
+    session)
+      _arguments '1:session command:(ls attach status kill delete)'
+      ;;
+    workspace|ws)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'workspace command' tree_commands
+      else
+        _arguments '--session=[session name]:session:' '--cwd=[working directory]:directory:_files -/' '--empty[create without a pane]'
+      fi
+      ;;
+    tab)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'tab command' tree_commands
+      else
+        _arguments '--session=[session name]:session:' '--workspace=[workspace id]:workspace:' '--cwd=[working directory]:directory:_files -/' '--empty[create without a pane]'
+      fi
+      ;;
+    pane)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'pane command' pane_commands
+        return
+      fi
+      case $words[3] in
+        new|create|split) _arguments '--session=[session name]:session:' '--label=[pane label]:label:' '--cwd=[working directory]:directory:_files -/' '--cols=[terminal width]:columns:' '--rows=[terminal height]:rows:' '--direction=[split direction]:(right down)' '--from=[pane to split]:pane:' '--no-focus[do not focus new pane]' '--current[split current pane]' '--env=[environment variable]:KEY=VALUE:' ;;
+        send|run) _arguments '--session=[session name]:session:' '--no-enter[do not append Enter]' ;;
+        read) _arguments '--session=[session name]:session:' '--scrollback[read retained scrollback]' '--lines=[number of lines]:lines:' '--ansi[keep ANSI styling]' '--raw[print only pane text]' ;;
+        neighbor) _arguments '--session=[session name]:session:' '--direction=[direction]:(left right up down)' ;;
+        move) _arguments '--session=[session name]:session:' '--tab=[destination tab]:tab:' '--from=[destination pane]:pane:' '--direction=[split direction]:(right down)' ;;
+        zoom) _arguments '--session=[session name]:session:' '--on[zoom in]' '--off[zoom out]' ;;
+        *) _arguments '--session=[session name]:session:' ;;
+      esac
+      ;;
+    wait)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'wait command' wait_commands
+        return
+      fi
+      case $words[3] in
+        agent-status|status) _arguments '--session=[session name]:session:' '--status=[wanted statuses]:status:(idle working blocked done)' '--timeout=[milliseconds]:milliseconds:' '--current[use calling pane]' ;;
+        exit) _arguments '--session=[session name]:session:' '--timeout=[milliseconds]:milliseconds:' '--current[use calling pane]' ;;
+        output) _arguments '--session=[session name]:session:' '--match=[literal text]:text:' '--regex=[regular expression]:pattern:' '--scrollback[match retained scrollback]' '--timeout=[milliseconds]:milliseconds:' '--current[use calling pane]' ;;
+      esac
+      ;;
+    fan)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'fan command' fan_commands
+      else
+        _arguments '--session=[session name]:session:' '--agents=[number of agents]:count:' '--cmd=[agent command]:command:' '--name=[fan name]:name:' '--base=[base commit]:commit:' '--no-worktree[share current checkout]' '--json[print JSON]' '--force[discard uncommitted work]' '--patch[include patch]' '--apply[fast-forward selected candidate]'
+      fi
+      ;;
+    integration)
+      if (( CURRENT == 3 )); then
+        _describe -t commands 'integration command' integration_commands
+      else
+        _arguments '--session=[session name]:session:' '--config-dir=[configuration directory]:directory:_files -/' '--project[use project config]' '--local[use local config]' '--settings=[settings file]:file:_files' '--all[target all configs]' '1:agent:(claude codex opencode)'
+      fi
+      ;;
+    agents)
+      _arguments '1:agent command:(ls list show init)'
+      ;;
+    watch)
+      _arguments '--session=[session name]:session:' '--status=[statuses]:status:(idle working blocked done)' '--pane=[pane ids]:panes:' '--kind=[event kinds]:kind:(agent_status pane_new pane_closed pane_exit)' '--plain[human-readable output]'
+      ;;
+    report)
+      _arguments '--session=[session name]:session:' '--status=[agent status]:status:(idle working blocked)' '--session-ref=[agent session id]:session:' '--session-ref-stdin=[JSON field]:field:' '--agent=[agent id]:agent:' '--quiet[never fail or print]'
+      ;;
+    skill)
+      _arguments '--install[install the rook skill]'
+      ;;
+    *)
+      _arguments '--session=[session name]:session:'
+      ;;
+  esac
+}
+
+_rook "$@"

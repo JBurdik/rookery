@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +11,14 @@ import (
 
 	"github.com/jirkab/rookery/internal/attachproto"
 )
+
+// copyResultMsg reports whether the client could hand the OSC 52 request to
+// its terminal. OSC 52 has no acknowledgement, so a successful write means
+// the request was sent, not that every terminal accepted it.
+type copyResultMsg struct {
+	text string
+	err  error
+}
 
 // Copy mode is the client half of the daemon's scroll viewport: the daemon
 // owns the cursor and the selection and draws them into the frame, this side
@@ -90,8 +99,8 @@ func (m *model) copyHint() string {
 func copyToClipboard(text string) tea.Cmd {
 	return func() tea.Msg {
 		enc := base64.StdEncoding.EncodeToString([]byte(text))
-		_, _ = os.Stdout.WriteString("\x1b]52;c;" + enc + "\a")
-		return nil
+		_, err := os.Stdout.WriteString("\x1b]52;c;" + enc + "\a")
+		return copyResultMsg{text: text, err: err}
 	}
 }
 
@@ -102,4 +111,8 @@ func copiedMsg(text string) string {
 		return "copied 1 line to the clipboard"
 	}
 	return "copied " + strconv.Itoa(n) + " lines to the clipboard"
+}
+
+func copyFailedMsg(err error) string {
+	return fmt.Sprintf("copy failed: could not send clipboard request (%v)", err)
 }

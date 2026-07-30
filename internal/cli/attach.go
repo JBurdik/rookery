@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/jirkab/rookery/internal/apiproto"
@@ -13,7 +17,13 @@ import (
 // otherwise attach lands on a blank, keyboard-dead screen, which looks
 // broken even though it's technically "working as designed".
 func RunAttach(args []string) error {
-	name := sessionArg(args)
+	remote, name, err := attachArgs(args)
+	if err != nil {
+		return err
+	}
+	if remote != "" {
+		return runRemoteAttach(remote, name)
+	}
 	if err := EnsureDaemon(name); err != nil {
 		return err
 	}
@@ -21,6 +31,48 @@ func RunAttach(args []string) error {
 		return err
 	}
 	return tui.Run(name, Version)
+}
+
+// attachArgs accepts a session name plus --remote HOST. Remote attach is
+// intentionally transport-simple: ssh owns authentication, host aliases and
+// reconnecting, while the remote rook binary owns its local Unix sockets.
+// That avoids exposing a control socket to the network just to attach a TUI.
+func attachArgs(args []string) (remote, name string, err error) {
+	name = defaultSessionName()
+	hasName := false
+	for len(args) > 0 {
+		switch args[0] {
+		case "--remote", "-r":
+			if remote != "" || len(args) < 2 || strings.HasPrefix(args[1], "-") {
+				return "", "", errors.New("usage: rook attach [session] [--remote user@host]")
+			}
+			remote = args[1]
+			args = args[2:]
+		default:
+			if strings.HasPrefix(args[0], "-") || hasName {
+				return "", "", fmt.Errorf("usage: rook attach [session] [--remote user@host]")
+			}
+			name = args[0]
+			hasName = true
+			args = args[1:]
+		}
+	}
+	return remote, name, nil
+}
+
+// runRemoteAttach replaces this process with an interactive SSH session. The
+// remote command is quoted explicitly because ssh executes it through the
+// remote shell; a session name must never become shell syntax there.
+func runRemoteAttach(target, name string) error {
+	cmd := exec.Command("ssh", "-tt", target, "rook attach "+shellQuote(name))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func ensureDefaultPane(name string) error {

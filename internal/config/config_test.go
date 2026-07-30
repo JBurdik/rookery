@@ -81,7 +81,7 @@ func TestAction(t *testing.T) {
 		{"?", ActionHelp},
 		{"H", ActionSwapLeft},
 		{"shift+down", ActionSwapDown},
-		{"r", ActionResizeMode},
+		{"r", ActionRenamePane},
 		{"§", ""},
 	}
 	for _, tt := range tests {

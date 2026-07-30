@@ -56,6 +56,13 @@ type App struct {
 	dragAxis     string
 	dragX, dragY int
 
+	// mousePane is the pane that a mouse-reporting program owns for the
+	// duration of one gesture. A press inside such a pane claims it, and the
+	// drag and release that follow go there even if the pointer has wandered
+	// out — a program that got a button-down and never the matching button-up
+	// is left with a stuck button.
+	mousePane string
+
 	// Glyph theme, adopted from the attached client so pane headers match the
 	// sidebar. spinnerFrame is the last animation frame drawn, used to decide
 	// when an animating pane needs a repaint.
@@ -74,11 +81,6 @@ type App struct {
 	// blink flashes a finished pane's border; blinkOn is the last phase drawn.
 	blink   bool
 	blinkOn bool
-	// managerCmd is the agent the manager bar starts, from the client's config.
-	managerCmd string
-	// managerAwaiting is set between asking the manager something and its turn
-	// ending, so only a reply to an actual question reaches the bar.
-	managerAwaiting bool
 	// nextFan numbers unnamed fan-out runs.
 	nextFan int
 

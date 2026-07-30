@@ -189,6 +189,9 @@ func (l *Loop) startPane(paneID string, w *Workspace, tab *Tab, p apiproto.PaneC
 	}
 	cols, rows := p.Cols, p.Rows
 	if cols <= 0 || rows <= 0 {
+		cols, rows = l.app.viewCols, l.app.viewRows
+	}
+	if cols <= 0 || rows <= 0 {
 		cols, rows = defaultCols, defaultRows
 	}
 

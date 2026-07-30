@@ -29,8 +29,20 @@ func main() {
 		err = cli.RunServe(os.Args[2:])
 	case "attach":
 		err = cli.RunAttach(os.Args[2:])
+	case "--remote":
+		// Keep the pleasant `rook --remote host` spelling alongside the
+		// explicit `rook attach --remote host` form.
+		err = cli.RunAttach(os.Args[1:])
 	case "ls":
 		err = cli.RunLs(os.Args[2:])
+	case "status":
+		err = cli.RunStatus(os.Args[2:])
+	case "reload":
+		err = cli.RunReload(os.Args[2:])
+	case "delete", "rm":
+		err = cli.RunDelete(os.Args[2:])
+	case "session":
+		err = cli.RunSession(os.Args[2:])
 	case "pane":
 		err = cli.RunPane(os.Args[2:])
 	case "workspace", "ws":
@@ -47,12 +59,12 @@ func main() {
 		err = cli.RunIntegration(os.Args[2:])
 	case "skill":
 		err = cli.RunSkill(os.Args[2:])
+	case "setup":
+		err = cli.RunSetup(os.Args[2:])
 	case "fan":
 		err = cli.RunFan(os.Args[2:])
 	case "watch":
 		err = cli.RunWatch(os.Args[2:])
-	case "manager":
-		err = cli.RunManager(os.Args[2:])
 	case "git":
 		err = cli.RunGit(os.Args[2:])
 	case "agents":
@@ -61,6 +73,8 @@ func main() {
 		err = cli.RunKill(os.Args[2:])
 	case "ping":
 		err = cli.RunPing(os.Args[2:])
+	case "completion":
+		err = cli.RunCompletion(os.Args[2:])
 	case "version", "--version", "-v":
 		// Worth having as more than a footnote in the help text: the client
 		// already refuses to trust a daemon built from a different version, so
@@ -87,9 +101,14 @@ Humans:
   rook                                            attach to the default session (auto-starts it)
   rook serve [--session NAME] [--foreground|-f]   start (or run) the daemon
   rook attach [session]                           attach a TUI to a session
+  rook attach [session] --remote user@host        attach through SSH to a remote session
   rook ls                                         list sessions
+  rook status [session]                           show a session's workload and agent states
   rook kill [session]                             stop a session's daemon
+  rook delete [session]                           permanently delete a stopped session
+  rook reload [session]                           reload daemon config and agent manifests
   rook ping [session]                             check daemon liveness
+  rook session ls|attach|status|kill|delete       namespaced aliases for session lifecycle
 
 Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait help`"+`:
   rook workspace ls|new|focus|rename|close        one workspace per repo or task
@@ -102,13 +121,16 @@ Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait h
   rook wait agent-status <pane> --status done     block until an agent finishes
   rook wait exit <pane>                           block until a pane's process ends
   rook fan "<task>" [--agents N]                  one prompt, N agents, one worktree each
-  rook fan ls|clean                               compare them / tidy up
+  rook fan ls|review|promote|clean                compare, retain, or tidy up
   rook watch [--status done,blocked]              stream agent state changes as NDJSON
-  rook manager <request...>                       ask the manager agent to do it
   rook git                                        open a git UI (lazygit/gitui/tig) in a pane
   rook integration install claude                 let the agent report its own status
   rook skill --install                            teach agents to drive rookery
-  rook agents ls|show|init                        the rules that detect agent status
+  rook setup                                      interactive wizard for both, per agent
+  rook agents ls|show|explain|init                inspect status rules or explain a pane verdict
+
+Shell completion:
+  rook completion bash|zsh                         print a completion script (source it in your shell)
   rook api <method> ['{json params}']             call any API method directly
 
 Agent status: working · blocked (wants input) · done (finished, unseen) ·
@@ -118,7 +140,7 @@ In the TUI, ctrl+b then:
   c new tab      v split right   - split down   z zoom       x close pane
   h/j/k/l move   H/J/K/L resize  1-9 jump tab   n/p cycle    N new workspace
   w/W workspace  b sidebar       g navigate     m mouse      ? help   q detach
-  G git UI       : manager bar
+  G git UI
 
 Mouse is on by default: click a pane, tab, workspace or agent, drag a divider.
 Shift+drag for your terminal's own text selection.

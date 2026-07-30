@@ -185,6 +185,20 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 		}
 		return l.paneSendKeys(req.ID, p), false
 
+	case "pane.send_text":
+		var p apiproto.PaneSendTextParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneSendKeys(req.ID, apiproto.PaneSendKeysParams{PaneID: p.PaneID, Text: p.Text}), false
+
+	case "pane.run":
+		var p apiproto.PaneRunParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneSendKeys(req.ID, apiproto.PaneSendKeysParams{PaneID: p.PaneID, Text: p.Text, PressEnter: true}), false
+
 	case "pane.read":
 		var p apiproto.PaneReadParams
 		if err := unmarshal(req.Params, &p); err != nil {
@@ -212,6 +226,27 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			return errResp(req.ID, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID), false
 		}
 		return ok(req.ID, apiproto.PaneFocusResult{PaneID: l.app.focusedPane(), Focused: true}), false
+
+	case "pane.inspect":
+		var p apiproto.PaneInspectParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneInspect(req.ID, p), false
+
+	case "pane.neighbor":
+		var p apiproto.PaneNeighborParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneNeighbor(req.ID, p), false
+
+	case "pane.move":
+		var p apiproto.PaneMoveParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.paneMove(req.ID, p), false
 
 	case "pane.rename":
 		var p apiproto.PaneRenameParams
@@ -270,17 +305,23 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 			return errResp(req.ID, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID), false
 		}
 		_, argv := pane.Actor.Foreground()
+		reason, rule := l.paneDebugExplanation(pane)
 		return ok(req.ID, apiproto.PaneDebugResult{
-			PaneID:      pane.ID,
-			Agent:       pane.Agent,
-			AgentStatus: string(pane.agentStatus()),
-			RawState:    string(pane.AgentState),
-			Seen:        pane.Seen,
-			Busy:        pane.Actor.Busy(),
-			Running:     pane.Running,
-			Foreground:  argv,
-			Title:       pane.Grid.Title(),
-			Bottom:      pane.Grid.BottomLines(6),
+			PaneID:       pane.ID,
+			Agent:        pane.Agent,
+			AgentStatus:  string(pane.agentStatus()),
+			RawState:     string(pane.AgentState),
+			Seen:         pane.Seen,
+			Busy:         pane.Actor.Busy(),
+			Running:      pane.Running,
+			Foreground:   argv,
+			Title:        pane.Grid.Title(),
+			Bottom:       pane.Grid.BottomLines(6),
+			Reason:       reason,
+			RuleID:       rule.ID,
+			RuleSource:   rule.Source,
+			RulePriority: rule.Priority,
+			RuleRegion:   rule.Region,
 		}), false
 
 	case "pane.report":
@@ -309,16 +350,19 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 		}
 		return l.fanClean(req.ID, p), false
 
-	case "manager.send":
-		var p apiproto.ManagerSendParams
+	case "fan.review":
+		var p apiproto.FanReviewParams
 		if err := unmarshal(req.Params, &p); err != nil {
 			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
 		}
-		cmd := p.Cmd
-		if cmd == "" {
-			cmd = l.app.managerCmd
+		return l.fanReview(req.ID, p), false
+
+	case "fan.promote":
+		var p apiproto.FanPromoteParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
 		}
-		return l.managerSend(p.Text, cmd), false
+		return l.fanPromote(req.ID, p), false
 
 	case "pane.git":
 		return l.openGitTool(), false
@@ -330,6 +374,13 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 		}
 		return l.waitPane(req.ID, p, reply)
 
+	case "wait.output":
+		var p apiproto.WaitOutputParams
+		if err := unmarshal(req.Params, &p); err != nil {
+			return errResp(req.ID, apiproto.ErrInvalidParams, err.Error()), false
+		}
+		return l.waitOutput(req.ID, p, reply)
+
 	case "server.shutdown":
 		for _, id := range l.app.allPanes() {
 			if pane, ok := l.app.panes[id]; ok {
@@ -338,9 +389,63 @@ func (l *Loop) handleAPI(req apiproto.Request, reply chan apiproto.Response) (ap
 		}
 		return ok(req.ID, apiproto.ServerShutdownResult{OK: true}), false
 
+	case "server.reload":
+		if l.reload == nil {
+			return errResp(req.ID, apiproto.ErrInternal, "configuration reload is unavailable"), false
+		}
+		if err := l.reload(); err != nil {
+			return errResp(req.ID, apiproto.ErrInternal, "reload configuration: "+err.Error()), false
+		}
+		l.refreshAgentStatus()
+		l.broadcastState()
+		return ok(req.ID, apiproto.ServerReloadResult{OK: true}), false
+
 	default:
 		return errResp(req.ID, apiproto.ErrMethodNotFound, "unknown method: "+req.Method), false
 	}
+}
+
+// paneDebugExplanation is the human-facing counterpart to evaluatePane. It
+// deliberately uses the same live signals, while debug.pane keeps exposing
+// the persisted raw and effective states for comparison.
+func (l *Loop) paneDebugExplanation(pane *Pane) (string, agentstatus.RuleMatch) {
+	if pane.Reported != "" && time.Since(pane.ReportedAt) < reportTTL {
+		return "an integration report is authoritative while it is fresh", agentstatus.RuleMatch{}
+	}
+
+	in := agentstatus.Input{
+		Title:  pane.Grid.Title(),
+		Bottom: pane.Grid.BottomLines(6),
+		Screen: pane.Grid.Lines(),
+	}
+	if pane.Agent != "" {
+		v := l.agents.EvaluateAgentVerdict(pane.Agent, in)
+		if v.SkipStateUpdate {
+			return "the matching rule requested that this status update be skipped", v.Rule
+		}
+		if v.Rule.ID != "" {
+			if v.State == agentstatus.Idle && time.Now().Before(pane.BusyUntil) {
+				return "the matching idle rule is within the post-prompt busy grace period", v.Rule
+			}
+			return "the highest-priority matching manifest rule selected this state", v.Rule
+		}
+		return "no manifest rule matched; recognised agents default to idle", agentstatus.RuleMatch{}
+	}
+
+	v := l.agents.EvaluateVerdict("", in)
+	if v.Rule.ID != "" {
+		return "the highest-priority shared manifest rule selected this state", v.Rule
+	}
+	if isShell(pane.Running, pane.Cmd) {
+		if pane.Actor.Busy() {
+			return "the shell has a foreground job", agentstatus.RuleMatch{}
+		}
+		return "the shell has no foreground job", agentstatus.RuleMatch{}
+	}
+	if pane.Actor.Busy() {
+		return "the process has a foreground job", agentstatus.RuleMatch{}
+	}
+	return "recent output activity determines this non-agent pane's state", agentstatus.RuleMatch{}
 }
 
 // --- workspaces ---
@@ -724,6 +829,104 @@ func (l *Loop) paneSendKeys(id string, p apiproto.PaneSendKeysParams) apiproto.R
 	return ok(id, apiproto.PaneSendKeysResult{OK: true, BytesWritten: n})
 }
 
+func (l *Loop) paneInspect(id string, p apiproto.PaneInspectParams) apiproto.Response {
+	pane := l.app.resolvePane(p.PaneID)
+	if pane == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID)
+	}
+	w, tab := l.app.tabOf(pane.ID)
+	if w == nil || tab == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "pane is not in a tab: "+pane.ID)
+	}
+	// A layout has coordinates only when its tab is visible. The neighbour
+	// relation is nevertheless deterministic for a hidden tab using the same
+	// session viewport used when it becomes visible.
+	rects := tab.layout.Rects(l.app.area())
+	result := apiproto.PaneInspectResult{Pane: l.paneInfo(pane), Focused: tab.focus == pane.ID, Zoomed: tab.zoom, Neighbors: map[string]string{}}
+	if r, ok := rects[pane.ID]; ok {
+		result.Rect = &apiproto.PaneRect{X: r.X, Y: r.Y, Width: r.W, Height: r.H}
+	}
+	for _, dir := range []string{"left", "right", "up", "down"} {
+		if n := Neighbor(rects, pane.ID, dir); n != "" {
+			result.Neighbors[dir] = n
+		}
+	}
+	return ok(id, result)
+}
+
+func (l *Loop) paneNeighbor(id string, p apiproto.PaneNeighborParams) apiproto.Response {
+	pane := l.app.resolvePane(p.PaneID)
+	if pane == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID)
+	}
+	_, tab := l.app.tabOf(pane.ID)
+	if tab == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "pane is not in a tab: "+pane.ID)
+	}
+	if p.Direction != "left" && p.Direction != "right" && p.Direction != "up" && p.Direction != "down" {
+		return errResp(id, apiproto.ErrInvalidParams, "direction must be left, right, up or down")
+	}
+	return ok(id, apiproto.PaneNeighborResult{PaneID: pane.ID, Direction: p.Direction, NeighborID: Neighbor(tab.layout.Rects(l.app.area()), pane.ID, p.Direction)})
+}
+
+func (l *Loop) paneMove(id string, p apiproto.PaneMoveParams) apiproto.Response {
+	pane := l.app.resolvePane(p.PaneID)
+	if pane == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID)
+	}
+	fromW, fromTab := l.app.tabOf(pane.ID)
+	toW, toTab := l.app.resolveTab(p.TabID)
+	if toW == nil || toTab == nil {
+		return errResp(id, apiproto.ErrNotFound, "no such destination tab: "+p.TabID)
+	}
+	if fromTab == toTab {
+		return errResp(id, apiproto.ErrInvalidParams, "pane is already in destination tab")
+	}
+	if fromTab.layout == nil {
+		return errResp(id, apiproto.ErrInternal, "source tab has no layout")
+	}
+
+	target, dir := "", ""
+	if toTab.layout != nil {
+		target = p.From
+		if target == "" {
+			target = toTab.focus
+		}
+		if toTab.layout.find(target) == nil {
+			return errResp(id, apiproto.ErrPaneNotFound, "no such destination pane: "+target)
+		}
+		dir = normalizeDirection(p.Direction)
+		if dir == "" {
+			dir = autoDirection(toTab.layout.Rects(l.app.area())[target])
+		}
+		if err := checkSplitFits(toTab.layout.Rects(l.app.area())[target], dir); err != nil {
+			return errResp(id, apiproto.ErrInvalidParams, err.Error())
+		}
+	}
+
+	// Remove only after validation succeeds. Retain the PTY and pane record;
+	// an empty source tab is kept rather than silently deleted.
+	fromTab.layout = fromTab.layout.Remove(pane.ID)
+	if fromTab.focus == pane.ID {
+		fromTab.focus = ""
+		if fromTab.layout != nil {
+			fromTab.focus = fromTab.layout.firstPane()
+		}
+	}
+	if toTab.layout == nil {
+		toTab.layout, toTab.focus = newLeaf(pane.ID), pane.ID
+	} else {
+		toTab.layout.Split(target, pane.ID, dir)
+		if !p.NoFocus {
+			toTab.focus, toTab.zoom = pane.ID, false
+		}
+	}
+	_ = fromW
+	l.app.dirty = true
+	l.broadcastState()
+	return ok(id, apiproto.PaneMoveResult{PaneID: pane.ID, TabID: toTab.ID})
+}
+
 // paneReport records what an agent integration says about itself.
 func (l *Loop) paneReport(id string, p apiproto.PaneReportParams) apiproto.Response {
 	pane := l.app.resolvePane(p.PaneID)
@@ -739,20 +942,22 @@ func (l *Loop) paneReport(id string, p apiproto.PaneReportParams) apiproto.Respo
 		pane.Agent = p.Agent
 	}
 
-	switch agentstatus.State(p.Status) {
-	case agentstatus.Idle, agentstatus.Working, agentstatus.Blocked:
-		pane.Reported = agentstatus.State(p.Status)
-		pane.ReportedAt = time.Now()
-		if pane.Reported == agentstatus.Working {
-			// A report of "working" is a firm one: drop the post-send grace,
-			// which exists only to cover the gap this report just closed.
-			pane.BusyUntil = time.Time{}
+	if !p.KeepStatus {
+		switch agentstatus.State(p.Status) {
+		case agentstatus.Idle, agentstatus.Working, agentstatus.Blocked:
+			pane.Reported = agentstatus.State(p.Status)
+			pane.ReportedAt = time.Now()
+			if pane.Reported == agentstatus.Working {
+				// A report of "working" is a firm one: drop the post-send grace,
+				// which exists only to cover the gap this report just closed.
+				pane.BusyUntil = time.Time{}
+			}
+			l.setAgentState(pane, pane.Reported)
+		case "":
+			pane.Reported, pane.ReportedAt = "", time.Time{}
+		default:
+			return errResp(id, apiproto.ErrInvalidParams, "status must be idle, working, blocked or empty")
 		}
-		l.setAgentState(pane, pane.Reported)
-	case "":
-		pane.Reported, pane.ReportedAt = "", time.Time{}
-	default:
-		return errResp(id, apiproto.ErrInvalidParams, "status must be idle, working, blocked or empty")
 	}
 
 	l.app.dirty = true
@@ -851,12 +1056,20 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 		l.dragDivider(m)
 		return
 	}
+	// A release ends whatever gesture was running. When that gesture was a
+	// divider drag it is Rook's own and stops here; otherwise it still has to
+	// reach the program that saw the press, so this falls through.
 	if m.Kind == "release" {
+		dividerDrag := l.app.dragPane != ""
 		l.app.dragPane, l.app.dragAxis = "", ""
-		return
+		if dividerDrag {
+			l.app.mousePane = ""
+			return
+		}
 	}
 
 	if m.Kind == "press" {
+		l.app.mousePane = ""
 		if d := l.dividerAt(m.X, m.Y); d != nil {
 			l.app.dragPane, l.app.dragAxis = d.APane, d.Dir
 			l.app.dragX, l.app.dragY = m.X, m.Y
@@ -864,7 +1077,10 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 		}
 	}
 
-	paneID := paneAt(rects, m.X, m.Y)
+	paneID := l.app.mouseTarget(rects, m)
+	if m.Kind == "release" {
+		l.app.mousePane = ""
+	}
 	if paneID == "" {
 		return
 	}
@@ -877,13 +1093,24 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 	// pane: an agent's TUI has clickable things of its own, and swallowing
 	// those clicks to move focus would break it.
 	if pane.Grid.MouseEnabled() {
-		if paneID != l.app.focusedPane() && m.Kind == "press" {
-			l.focusPane(paneID)
+		if m.Kind == "press" {
+			l.app.mousePane = paneID
+			if paneID != l.app.focusedPane() {
+				l.focusPane(paneID)
+			}
 		}
 		rect := rects[paneID]
 		withBorder := l.bordersOn(len(rects))
 		content := paneContentRect(rect, !withBorder && len(rects) > 1, withBorder)
-		l.forwardMouse(pane, m, m.X-content.X+1, m.Y-content.Y+1)
+		col, row := m.X-content.X+1, m.Y-content.Y+1
+		if m.Kind != "press" {
+			// The pointer may have left the pane mid-gesture. A real terminal
+			// keeps reporting, pinned to the edge, so clamp rather than drop:
+			// dropping is what leaves the button stuck down.
+			col = min(max(col, 1), content.W)
+			row = min(max(row, 1), content.H)
+		}
+		l.forwardMouse(pane, m, col, row, content.W, content.H)
 		return
 	}
 
@@ -948,15 +1175,36 @@ func paneAt(rects map[string]Rect, x, y int) string {
 	return ""
 }
 
+// mouseTarget picks which pane an event belongs to. A press goes to whatever
+// sits under the pointer; the drag and release that continue a gesture a
+// mouse-reporting pane claimed stay with that pane even once the pointer has
+// left it.
+func (a *App) mouseTarget(rects map[string]Rect, m attachproto.Mouse) string {
+	if m.Kind != "press" && a.mousePane != "" {
+		if _, ok := rects[a.mousePane]; ok {
+			return a.mousePane
+		}
+	}
+	return paneAt(rects, m.X, m.Y)
+}
+
 // forwardMouse re-encodes an event for the program inside a pane, in
-// pane-local 1-based coordinates.
-func (l *Loop) forwardMouse(pane *Pane, m attachproto.Mouse, col, row int) {
-	if col < 1 || row < 1 {
-		return
+// pane-local 1-based coordinates bounded by the pane's content size.
+func (l *Loop) forwardMouse(pane *Pane, m attachproto.Mouse, col, row, w, h int) {
+	if s := mouseReport(m, col, row, w, h, pane.Grid.MouseSGR()); s != "" {
+		_, _ = pane.Actor.Write([]byte(s))
+	}
+}
+
+// mouseReport encodes one event as the bytes a program that asked for mouse
+// reporting expects on its stdin, or "" if there is nothing to report.
+func mouseReport(m attachproto.Mouse, col, row, w, h int, sgr bool) string {
+	if col < 1 || row < 1 || col > w || row > h {
+		return ""
 	}
 	code, release := mouseButtonCode(m)
 	if code < 0 {
-		return
+		return ""
 	}
 	if m.Shift {
 		code |= 4
@@ -967,7 +1215,7 @@ func (l *Loop) forwardMouse(pane *Pane, m attachproto.Mouse, col, row int) {
 	if m.Ctrl {
 		code |= 16
 	}
-	_, _ = pane.Actor.Write([]byte(encodeMouse(code, col, row, release, pane.Grid.MouseSGR())))
+	return encodeMouse(code, col, row, release, sgr)
 }
 
 func mouseButtonCode(m attachproto.Mouse) (code int, release bool) {

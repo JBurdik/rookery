@@ -218,6 +218,9 @@ func (r *Registry) Manifest(id string) *Manifest { return r.byID[id] }
 // whether the matched rule wants it applied at all.
 type Verdict struct {
 	State State
+	// Rule identifies the matching rule that produced State. It is empty when
+	// no rule matched (and an agent therefore defaulted to Idle).
+	Rule RuleMatch
 	// SkipStateUpdate reports that the winning rule matched but asked for its
 	// verdict to be discarded — the caller should keep whatever state it had
 	// before this tick rather than treat State (always Unknown here) as a
@@ -226,6 +229,16 @@ type Verdict struct {
 	// VisibleBlocker reports that the winning rule is a Blocked verdict the
 	// rule author marked as directly visible on screen.
 	VisibleBlocker bool
+}
+
+// RuleMatch identifies the manifest rule behind a verdict. Keeping this
+// small, exported provenance alongside Verdict lets callers explain a status
+// without needing to rerun the detector or expose compiled regular expressions.
+type RuleMatch struct {
+	ID       string
+	Source   string
+	Priority int
+	Region   string
 }
 
 // Evaluate returns the highest-priority state matching the input, considering
@@ -239,7 +252,7 @@ func (r *Registry) Evaluate(agent string, in Input) State {
 func (r *Registry) EvaluateVerdict(agent string, in Input) Verdict {
 	best := Verdict{State: Unknown}
 	bestPriority := -1
-	consider := func(rules []Rule) {
+	consider := func(source string, rules []Rule) {
 		for _, rule := range rules {
 			if rule.Priority <= bestPriority {
 				continue
@@ -247,6 +260,7 @@ func (r *Registry) EvaluateVerdict(agent string, in Input) Verdict {
 			if rule.matches(regionText(rule.Region, in)) {
 				best = Verdict{
 					State:           rule.State,
+					Rule:            RuleMatch{ID: rule.ID, Source: source, Priority: rule.Priority, Region: rule.Region},
 					SkipStateUpdate: rule.SkipStateUpdate,
 					VisibleBlocker:  rule.VisibleBlocker && rule.State == Blocked,
 				}
@@ -255,9 +269,9 @@ func (r *Registry) EvaluateVerdict(agent string, in Input) Verdict {
 		}
 	}
 	if m := r.byID[agent]; m != nil {
-		consider(m.Rules)
+		consider(agent, m.Rules)
 	}
-	consider(r.generic)
+	consider(genericID, r.generic)
 	return best
 }
 

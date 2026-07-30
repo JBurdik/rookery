@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -227,6 +228,152 @@ func TestTwoConfigsAreIndependent(t *testing.T) {
 func TestUnknownIntegration(t *testing.T) {
 	if _, err := Install("nosuchagent", settingsPath(t.TempDir()), "rook"); err == nil {
 		t.Error("Install accepted an unknown integration")
+	}
+}
+
+func TestCodexInstallWritesHooksAndFeatureFlag(t *testing.T) {
+	home := t.TempDir()
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+
+	st, err := Install("codex", hooksPath, "rook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Installed {
+		t.Errorf("status = %+v, want installed", st)
+	}
+
+	data, err := os.ReadFile(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file map[string]any
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("wrote invalid JSON: %v\n%s", err, data)
+	}
+	hooks, ok := file["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("no hooks object: %v", file)
+	}
+	entries, ok := hooks["SessionStart"].([]any)
+	if !ok || !hasCommand(entries, "rook report --agent codex --session-ref-stdin session_id --quiet || true # rookery-integration") {
+		t.Errorf("SessionStart hook missing or wrong command: %v", hooks)
+	}
+
+	config, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTOMLHooksTrue(string(config)) {
+		t.Errorf("config.toml does not enable hooks:\n%s", config)
+	}
+}
+
+func TestCodexInstallTurnsOnExistingFeaturesTable(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := "model = \"o1\"\n\n[features]\nhooks = false\nweb_search = true\n"
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install("codex", filepath.Join(dir, "hooks.json"), "rook"); err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasTOMLHooksTrue(string(config)) {
+		t.Errorf("hooks not turned on: %s", config)
+	}
+	if !strings.Contains(string(config), "web_search = true") {
+		t.Errorf("unrelated feature flag lost: %s", config)
+	}
+}
+
+func TestCodexUninstallLeavesConfigTomlAlone(t *testing.T) {
+	home := t.TempDir()
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+	if _, err := Install("codex", hooksPath, "rook"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("codex", hooksPath); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("config.toml changed on uninstall:\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+func hasTOMLHooksTrue(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == "hooks = true" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOpenCodeInstallWritesMarkedPlugin(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "opencode", "plugin", "rook-agent-state.js")
+
+	st, err := Install("opencode", path, "/usr/local/bin/rook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Installed {
+		t.Errorf("status = %+v, want installed", st)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), opencodeMarker) {
+		t.Error("plugin file missing rookery marker")
+	}
+	if !strings.Contains(string(data), "/usr/local/bin/rook") {
+		t.Error("plugin file does not reference the rook binary")
+	}
+}
+
+func TestOpenCodeUninstallOnlyRemovesOurs(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "opencode", "plugin", "rook-agent-state.js")
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("// my own plugin\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("opencode", path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); err != nil {
+		t.Errorf("uninstall removed a plugin file it did not install: %v", err)
+	}
+
+	if _, err := Install("opencode", path, "rook"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("opencode", path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); !os.IsNotExist(err) {
+		t.Error("uninstall left our own plugin file behind")
 	}
 }
 

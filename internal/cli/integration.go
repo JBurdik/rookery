@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +25,8 @@ func RunReport(args []string) error {
 	fs := newPaneFlags("report")
 	status := fs.set.String("status", "", "idle | working | blocked (empty hands the pane back to screen detection)")
 	sessionRef := fs.set.String("session-ref", "", "the agent's own session id, kept for a future resume")
+	sessionRefStdin := fs.set.String("session-ref-stdin", "",
+		"read the session id from this JSON field on stdin, instead of --session-ref (for hooks that pipe their event as JSON)")
 	agent := fs.set.String("agent", "", "which agent is reporting")
 	quiet := fs.set.Bool("quiet", false, "print nothing, and exit 0 even on failure")
 	if err := fs.parse(args); err != nil {
@@ -42,14 +47,40 @@ func RunReport(args []string) error {
 		return errors.New("not inside a rookery pane ($" + PaneEnvVar + " is unset)")
 	}
 
+	ref := *sessionRef
+	if *sessionRefStdin != "" {
+		var payload map[string]any
+		if data, err := io.ReadAll(os.Stdin); err == nil {
+			_ = json.Unmarshal(data, &payload)
+		}
+		if v, _ := payload[*sessionRefStdin].(string); v != "" {
+			ref = v
+		} else {
+			// The event this hook fired for didn't carry the field we wanted —
+			// nothing to report, and a hook must not make noise over that.
+			return nil
+		}
+	}
+
+	// A caller who never touched --status is reporting a session id only
+	// (Codex's SessionStart, OpenCode's session.updated) and must not clear
+	// the pane's lifecycle status back to screen detection as a side effect.
+	statusGiven := false
+	fs.set.Visit(func(f *flag.Flag) {
+		if f.Name == "status" {
+			statusGiven = true
+		}
+	})
+
 	resp, err := apiCall(fs.session, apiproto.Request{
 		ID:     "report",
 		Method: "pane.report",
 		Params: mustJSON(apiproto.PaneReportParams{
 			PaneID:     pane,
 			Status:     *status,
-			SessionRef: *sessionRef,
+			SessionRef: ref,
 			Agent:      *agent,
+			KeepStatus: !statusGiven,
 		}),
 	})
 	if *quiet {

@@ -54,8 +54,8 @@ rook wait agent-status w1:p4 --status idle --timeout 60000
 rook pane send w1:p4 review the diff on this branch and report only real problems
 ```
 
-`rook fan` already queues its initial prompts. A pane you spawned yourself
-does not.
+`rook fan` and the manager bar already queue for you. A pane you spawned
+yourself does not.
 
 ## Working with other agents
 

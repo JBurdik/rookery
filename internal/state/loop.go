@@ -66,8 +66,6 @@ type ClientTheme struct {
 	DoneColor string
 	// Blink enables that flash at all.
 	Blink bool
-	// ManagerCmd is the agent the manager bar talks to.
-	ManagerCmd string
 }
 
 type attachConnectMsg struct {
@@ -114,6 +112,7 @@ type Loop struct {
 	version string
 	sound   *notify.Player
 	agents  *agentstatus.Registry
+	reload  func() error
 
 	// lastSnapshot is the layout as it was last written to disk, so an
 	// unchanged tree costs a marshal rather than a file write.
@@ -144,6 +143,11 @@ func (l *Loop) SetAgentRegistry(r *agentstatus.Registry) {
 		l.agents = r
 	}
 }
+
+// SetReloader supplies the daemon-owned configuration reload operation. It is
+// called from the loop goroutine, which keeps sound and agent registry changes
+// serialized with every other state change.
+func (l *Loop) SetReloader(reload func() error) { l.reload = reload }
 
 // NewLoop creates a Loop for the given session name. version is reported by
 // ping and shown in `rook ls`.
@@ -328,9 +332,6 @@ func (l *Loop) handleAttachConnect(m attachConnectMsg) {
 	l.app.spinnerFG = termgrid.ParseColor(m.theme.SpinnerColor, l.app.spinnerFG)
 	l.app.doneFG = termgrid.ParseColor(m.theme.DoneColor, l.app.doneFG)
 	l.app.blink = m.theme.Blink
-	if m.theme.ManagerCmd != "" {
-		l.app.managerCmd = m.theme.ManagerCmd
-	}
 	if m.theme.Borders != "" {
 		l.app.borders = m.theme.Borders
 	}
@@ -433,8 +434,6 @@ func (l *Loop) handleAttachCmd(m attachCmdMsg) {
 		}
 	case attachproto.ActionGit:
 		resp = l.openGitTool()
-	case attachproto.ActionManager:
-		resp = l.managerSend(m.text, l.app.managerCmd)
 	case attachproto.ActionNewWorkspace:
 		resp = l.workspaceCreate("attach", apiproto.WorkspaceCreateParams{Name: m.text})
 	case attachproto.ActionFocusWS:
@@ -741,9 +740,6 @@ func (l *Loop) refreshAgentStatus() {
 		switch {
 		case next == agentstatus.Idle && pane.AgentState != agentstatus.Unknown:
 			pane.DoneAt = time.Now()
-			if pane.Manager {
-				l.managerReplied(pane)
-			}
 			// A turn just ended. If the pane wasn't on screen, that result is
 			// unseen — which is exactly what "done" means.
 			_, onScreen := visible[pane.ID]

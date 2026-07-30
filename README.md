@@ -10,6 +10,21 @@ go build -o rook ./cmd/rook
 ./rook                # attach to the default session (starts the daemon if needed)
 ```
 
+## Remote attach
+
+If Rook is installed on a machine you can reach with SSH, its daemon and PTYs
+stay entirely on that machine; your local terminal simply runs the remote
+attach client:
+
+```bash
+rook attach review --remote devbox
+# equivalently: rook --remote devbox review
+```
+
+SSH owns authentication, host aliases and connection recovery. This is
+deliberately not a network-exposed Rook socket: the remote daemon continues to
+use its local Unix sockets and SSH carries only the interactive terminal.
+
 ## Installing it
 
 ```
@@ -189,38 +204,10 @@ The phase comes from the wall clock, so the daemon's borders and the client's
 chrome flash together without coordinating, and the repaint only runs while a
 visible pane is inside its blink window.
 
-### The manager bar
+### Reliable agent input
 
-A row above the status line, always on screen. `prefix :` (or `prefix a`, or a
-click on the bar) puts the cursor in it; type what you want and it goes to a
-**manager agent** — an ordinary pane running your agent of choice, in its own
-tab, with rookery's CLI on its PATH:
-
-```
-◆ ❯ split a pane and run the tests, tell me if they fail▌
-```
-
-`rook manager <request...>` does the same from a shell.
-
-The bar spins while the manager is thinking, then holds its answer until the
-manager says something else — so a one-line question needs no trip to the
-manager's tab, and the reply is not overwritten by the next status message.
-Longer answers are in the tab in full.
-
-It costs one permanent row of pane height. That is deliberate: a bar that
-existed only while you typed at it made every answer look like a status message
-that had already scrolled away.
-
-The manager is started on first use and briefed once: it is told it lives
-inside rookery and given the commands that matter (`rook pane new`,
-`pane send`, `pane read`, `wait agent-status`). Nothing about it is special
-beyond rookery remembering which pane it is — it has the same CLI and the same
-permissions as any agent you start yourself. It opens in its own tab and does
-not steal focus, so asking it something never rearranges what you were
-looking at.
-
-Two things about typing at an agent that took measuring to get right, and which
-`rook pane send` now does for every pane, not just the manager:
+Two things about typing at an agent took measuring to get right, and which
+`rook pane send` does for every pane:
 
 - **The Enter is a separate keypress**, 150ms after the text. Agent TUIs detect
   pastes by how bytes arrive: text and its carriage return in one write look
@@ -228,13 +215,8 @@ Two things about typing at an agent that took measuring to get right, and which
   nothing is submitted.
 - **Messages queue until the agent is ready.** A freshly spawned agent shows no
   "working" marker while its UI is still coming up, so it looks idle — and text
-  typed into a composer that does not exist yet is simply lost. The manager
-  drains one message per idle turn, which also stops two messages arriving
-  concatenated.
-
-```json
-{ "ui": { "manager_cmd": "claude" } }
-```
+  typed into a composer that does not exist yet is simply lost. Rook drains one
+  message per idle turn, which also stops two messages arriving concatenated.
 
 ### Colours
 
@@ -298,6 +280,27 @@ what rookery added. Verified against a copy of a real config with 26 hook
 entries across 10 events — install/uninstall round-trips byte-identical. A
 settings file it cannot parse is refused, not replaced.
 
+Codex and OpenCode are integrated too, one tier each:
+
+```bash
+rook integration install codex      # session id at start, into ~/.codex/hooks.json
+rook integration install opencode   # authoritative status, via a plugin file
+```
+
+Codex's hooks don't cover every lifecycle transition (a permission
+cancellation or interrupt doesn't reliably fire one), so its integration
+reports only the session id on `SessionStart` — status stays with screen
+detection, same split Herdr draws for Codex. Install also turns on
+`[features] hooks = true` in `config.toml`, since `hooks.json` is inert
+without it; uninstall leaves `config.toml` alone.
+
+OpenCode's plugin events *do* cover every transition, so it is authoritative
+like Claude — it just arrives as a JS file (`~/.config/opencode/plugin/rook-agent-state.js`)
+instead of a `settings.json` merge, since OpenCode has no hooks-config format
+of its own to merge into. Reinstalling overwrites it; uninstall removes it
+only if it still carries rookery's marker, so a plugin you wrote by hand at
+the same path is left alone.
+
 #### Several configurations at once
 
 Having more than one live config is normal — a relocated config directory for
@@ -343,6 +346,25 @@ create.
 
 Same idea as Herdr's `SKILL.md`, and the same gate: it tells the agent to do
 nothing unless `ROOK_ENV=1`.
+
+### `rook setup` — an interactive wizard for both
+
+```bash
+rook setup
+```
+
+`rook integration install` and `rook skill --install` are two commands with
+flags to look up; `rook setup` is the same two installers behind one
+Bubble Tea wizard, for "wire up whatever agents I have" without reading
+either. It lists the agents rookery knows about (Claude Code, Codex,
+OpenCode) with what's already on `PATH` and already installed, lets you
+check the ones you want, shows exactly which files it's about to touch, then
+installs. Nothing it does isn't already `rook skill --install` /
+`rook integration install` under the hood — the wizard only decides which
+agent and prints the outcome.
+
+Not a terminal (piped, scripted, CI)? It refuses and points at the two
+flag-driven commands instead, same as ever.
 
 ### Agent detection rules
 
@@ -522,7 +544,8 @@ One prompt, several agents, one git checkout each:
 rook fan "make the flaky auth test pass" --agents 3
 rook watch --status done,blocked      # tell me when they land
 rook fan ls                           # who did what
-git merge rook/fan1-2                 # keep the one you liked
+rook fan review fan1                  # compare committed candidates
+rook fan promote fan1 fan1-2 --apply  # fast-forward a clean winner
 rook fan clean fan1 --force           # bin the rest
 ```
 
@@ -544,6 +567,12 @@ nothing.
 `fan clean` is all-or-nothing. If any worktree has uncommitted work it removes
 nothing and says which — an earlier version closed the panes first and *then*
 refused, which left checkouts with no way back to them. `--force` discards.
+
+`fan review fan1 [candidate]` reports each candidate's base, commits, changed
+files, diffstat, and dirty state; `--patch` prints one candidate's committed
+patch. `fan promote` previews first. Its `--apply` form only fast-forwards a
+clean source branch to a clean candidate with commits, and retains every
+worktree so nothing is destroyed while you inspect the result.
 
 The prompt is **queued**, not typed immediately. An agent that has not finished
 starting loses whatever you send it, which is how a fan-out of five quietly
@@ -586,8 +615,11 @@ the drop is counted rather than hidden.
 | `rook` | attach to the default session, starting it if needed |
 | `rook serve [--session NAME] [-f]` | start the daemon (`-f` stays in the foreground) |
 | `rook attach [session]` | attach a TUI |
+| `rook attach [session] --remote user@host` | attach to a remote Rook session through SSH |
 | `rook ls` | list sessions and pane counts |
-| `rook ping` / `rook kill [session]` | liveness check / stop a session |
+| `rook status [session]` | compact session and agent-status summary |
+| `rook reload [session]` | reload daemon sound settings and agent manifests |
+| `rook ping` / `rook kill [session]` / `rook delete [session]` | liveness check / stop / permanently remove a stopped session |
 
 ### The layout survives a restart
 

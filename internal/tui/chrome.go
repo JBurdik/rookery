@@ -17,14 +17,9 @@ import (
 // say. Modelled on Herdr's layout — the sidebar is where you read state, and
 // the terminal itself keeps almost all of the screen.
 const (
-	headerRows = 1
-	// managerRows is the always-visible manager bar. It costs one row of pane
-	// forever, which is the point: the manager is the thing you talk to most,
-	// and a bar that only exists while you type at it made its answer look
-	// like a status message that had already scrolled away.
-	managerRows = 1
+	headerRows  = 1
 	statusRows  = 1
-	chromeRows  = headerRows + managerRows + statusRows
+	chromeRows  = headerRows + statusRows
 	minPaneCols = 20
 )
 
@@ -53,16 +48,13 @@ type palette struct {
 	popoverKey     lipgloss.Style
 	popoverMuted   lipgloss.Style
 
-	tabActive    lipgloss.Style
-	tabInactive  lipgloss.Style
-	divider      lipgloss.Style
-	sidebarEdge  lipgloss.Style
-	help         lipgloss.Style
-	errorStyle   lipgloss.Style
-	alert        lipgloss.Style
-	managerReply lipgloss.Style
-	managerInput lipgloss.Style
-	managerSpin  lipgloss.Style
+	tabActive   lipgloss.Style
+	tabInactive lipgloss.Style
+	divider     lipgloss.Style
+	sidebarEdge lipgloss.Style
+	help        lipgloss.Style
+	errorStyle  lipgloss.Style
+	alert       lipgloss.Style
 
 	// status maps an agent status to its colour, in sidebar and tab flavours.
 	status    map[string]lipgloss.Style
@@ -103,13 +95,10 @@ func newPalette(c config.Colors) palette {
 		// The sidebar's own edge is drawn with the panel background on one
 		// side and the terminal's on the other, so it reads as the boundary
 		// of a panel rather than as a stray character.
-		sidebarEdge:  lipgloss.NewStyle().Foreground(col(c.SidebarBG)).Background(lipgloss.Color(c.Border)),
-		help:         lipgloss.NewStyle().Foreground(col(c.Muted)),
-		errorStyle:   lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
-		alert:        lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
-		managerReply: lipgloss.NewStyle().Foreground(col(c.Accent)).Bold(true),
-		managerInput: lipgloss.NewStyle().Foreground(col(c.Text)),
-		managerSpin:  lipgloss.NewStyle().Foreground(col(c.Spinner)).Bold(true),
+		sidebarEdge: lipgloss.NewStyle().Foreground(col(c.SidebarBG)).Background(lipgloss.Color(c.Border)),
+		help:        lipgloss.NewStyle().Foreground(col(c.Muted)),
+		errorStyle:  lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
+		alert:       lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
 	}
 	p.status = map[string]lipgloss.Style{
 		"working": bg.Foreground(col(c.Working)),
@@ -150,9 +139,6 @@ func (m *model) statusGlyph(status, paneStatus string) string {
 // anyWorking reports whether something on screen is animating, which is the
 // only time the client needs a repaint clock of its own.
 func (m *model) anyWorking() bool {
-	if m.managerBusy {
-		return true
-	}
 	for _, a := range m.state.Agents {
 		if a.Status == "working" {
 			return true
@@ -376,32 +362,6 @@ func (m *model) renderSidebar(rows int) []string {
 	return lines[:rows]
 }
 
-// renderManagerBar draws the manager's own row, directly above the status line:
-// the input when you are typing at it, its last answer when you are not, a
-// spinner while it is thinking, and otherwise the key that focuses it.
-//
-// The answer stays until the manager says something else. It deliberately does
-// not share the status row: status messages are overwritten by the next
-// keypress, and an answer you asked for should not vanish that way.
-func (m *model) renderManagerBar() string {
-	prefix := " " + m.icons.Agent + " "
-	avail := max(m.width-lipgloss.Width(prefix), 0)
-	label := m.p.managerReply.Render(prefix)
-
-	switch {
-	case m.managerFocused():
-		return label + m.p.managerInput.Render(clampPad("❯ "+m.promptText+"▌", avail))
-	case m.managerBusy:
-		return label + m.p.managerSpin.Render(m.statusGlyph("working", "")) +
-			m.p.help.Render(clampPad(" thinking…", max(avail-1, 0)))
-	case m.managerReply != "":
-		return label + m.p.managerReply.Render(clampPad(m.managerReply, avail))
-	default:
-		keys := strings.Join(m.keys.KeysFor(config.ActionManager), " ")
-		return label + m.p.help.Render(clampPad("❯ ask the manager — "+m.keys.Prefix+" "+keys+", or click here", avail))
-	}
-}
-
 // sidebarRule draws the horizontal line between the two panels, in the same
 // colour as the sidebar's own edge so the panel reads as a box being divided
 // rather than as a row of dashes.
@@ -480,6 +440,17 @@ func baseName(s string) string {
 		return s[i+1:]
 	}
 	return s
+}
+
+// renderPromptDialog draws the popover for rename/new-tab text entry, in
+// place of the old single status-line prompt.
+func (m *model) renderPromptDialog(maxWidth int) []string {
+	width := min(max(maxWidth-8, 24), 60)
+	return []string{
+		m.p.popoverTitle.Render(clampPad(" "+m.promptLabel, width)),
+		m.p.popoverBG.Render(clampPad(" ❯ "+m.promptText+"▌", width)),
+		m.p.popoverMuted.Render(clampPad(" enter confirms · esc cancels", width)),
+	}
 }
 
 // overlay draws a bordered box centred on top of already-rendered lines,
@@ -608,7 +579,6 @@ var helpRight = []helpEntry{
 	{config.ActionGoto, "go to (fuzzy)"},
 	{config.ActionCopyMode, "scroll / copy mode"},
 	{config.ActionGit, "git UI in a pane"},
-	{config.ActionManager, "type at the manager"},
 	{config.ActionToggleSidebar, "toggle sidebar"},
 	{config.ActionFocusSidebar, "sidebar navigation"},
 }

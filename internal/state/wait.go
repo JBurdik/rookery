@@ -1,7 +1,9 @@
 package state
 
 import (
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jirkab/rookery/internal/apiproto"
@@ -27,6 +29,13 @@ type waiter struct {
 	reply    chan apiproto.Response
 	started  time.Time
 	deadline time.Time
+	output   *outputWait
+}
+
+type outputWait struct {
+	match  string
+	re     *regexp.Regexp
+	source string
 }
 
 func (l *Loop) waitPane(id string, p apiproto.WaitPaneParams, reply chan apiproto.Response) (apiproto.Response, bool) {
@@ -64,8 +73,54 @@ func (l *Loop) waitPane(id string, p apiproto.WaitPaneParams, reply chan apiprot
 	return apiproto.Response{}, true
 }
 
+func (l *Loop) waitOutput(id string, p apiproto.WaitOutputParams, reply chan apiproto.Response) (apiproto.Response, bool) {
+	pane := l.app.resolvePane(p.PaneID)
+	if pane == nil {
+		return errResp(id, apiproto.ErrPaneNotFound, "no such pane: "+p.PaneID), false
+	}
+	if (p.Match == "") == (p.Regex == "") {
+		return errResp(id, apiproto.ErrInvalidParams, "exactly one of match or regex is required"), false
+	}
+	source := p.Source
+	if source == "" {
+		source = "screen"
+	}
+	if source != "screen" && source != "scrollback" {
+		return errResp(id, apiproto.ErrInvalidParams, "source must be screen or scrollback"), false
+	}
+	ow := &outputWait{match: p.Match, source: source}
+	if p.Regex != "" {
+		re, err := regexp.Compile(p.Regex)
+		if err != nil {
+			return errResp(id, apiproto.ErrInvalidParams, "invalid regex: "+err.Error()), false
+		}
+		ow.re = re
+	}
+	w := &waiter{id: id, paneID: pane.ID, reply: reply, started: time.Now(), output: ow}
+	if p.TimeoutMS > 0 {
+		w.deadline = w.started.Add(time.Duration(p.TimeoutMS) * time.Millisecond)
+	} else if p.TimeoutMS == 0 {
+		w.deadline = w.started.Add(defaultWaitTimeout)
+	}
+	if w.matches(pane) {
+		return ok(id, w.result(pane, false)), false
+	}
+	l.app.waiters = append(l.app.waiters, w)
+	return apiproto.Response{}, true
+}
+
 // matches reports whether the pane is in one of the states this waiter wants.
 func (w *waiter) matches(pane *Pane) bool {
+	if w.output != nil {
+		text := pane.Grid.RenderPlain()
+		if w.output.source == "scrollback" {
+			text, _ = pane.Grid.Scrollback(0, false)
+		}
+		if w.output.re != nil {
+			return w.output.re.MatchString(text)
+		}
+		return strings.Contains(text, w.output.match)
+	}
 	if len(w.states) == 0 {
 		return pane.Status == "exited"
 	}
@@ -78,7 +133,14 @@ func (w *waiter) matches(pane *Pane) bool {
 	return slices.Contains(w.states, string(pane.agentStatus()))
 }
 
-func (w *waiter) result(pane *Pane, timedOut bool) apiproto.WaitPaneResult {
+func (w *waiter) result(pane *Pane, timedOut bool) any {
+	if w.output != nil {
+		match := w.output.match
+		if w.output.re != nil {
+			match = w.output.re.String()
+		}
+		return apiproto.WaitOutputResult{PaneID: w.paneID, Matched: !timedOut, Match: match, Source: w.output.source, Revision: pane.Revision, TimedOut: timedOut, WaitedMS: int(time.Since(w.started).Milliseconds())}
+	}
 	res := apiproto.WaitPaneResult{
 		PaneID:      w.paneID,
 		Matched:     !timedOut,

@@ -20,9 +20,6 @@ const agentWarmup = 2500 * time.Millisecond
 // queuedSend is one thing waiting to be typed at a pane.
 type queuedSend struct {
 	text string
-	// reply asks for the pane's answer to be reported when its turn ends.
-	// Used by the manager bar; a fan-out prompt does not want it.
-	reply bool
 }
 
 // queueSend parks text for a pane instead of writing it now.
@@ -32,11 +29,11 @@ type queuedSend struct {
 // sent back to back arrive concatenated because the first one's Enter has not
 // landed yet. Draining one message per idle turn fixes both, and is why
 // fanning a prompt out to five agents reliably reaches all five.
-func (l *Loop) queueSend(paneID, text string, wantReply bool) {
+func (l *Loop) queueSend(paneID, text string) {
 	if l.app.sendQueue == nil {
 		l.app.sendQueue = map[string][]queuedSend{}
 	}
-	l.app.sendQueue[paneID] = append(l.app.sendQueue[paneID], queuedSend{text: text, reply: wantReply})
+	l.app.sendQueue[paneID] = append(l.app.sendQueue[paneID], queuedSend{text: text})
 }
 
 // pumpSends drains one queued message per ready pane. Called from the status
@@ -62,9 +59,6 @@ func (l *Loop) pumpSends() {
 			delete(l.app.sendQueue, paneID)
 		} else {
 			l.app.sendQueue[paneID] = queue[1:]
-		}
-		if msg.reply {
-			l.app.managerAwaiting = true
 		}
 		l.paneSendKeys("queued", apiproto.PaneSendKeysParams{
 			PaneID: pane.ID, Text: msg.text, PressEnter: true,

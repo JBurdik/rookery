@@ -171,3 +171,53 @@ func TestRepoRootRejectsNonRepo(t *testing.T) {
 		t.Error("RepoRoot accepted a directory that is not a repository")
 	}
 }
+
+func TestReviewAndPromote(t *testing.T) {
+	repo := newRepo(t)
+	mgr := New(filepath.Join(t.TempDir(), "worktrees"))
+	tree, err := mgr.Create(repo, "winner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree.Path, "README.md"), []byte("winner\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, tree.Path, "add", "README.md")
+	mustGit(t, tree.Path, "commit", "-qm", "make it win")
+
+	review, err := ReviewBranch(repo, tree.Branch, tree.Path, true)
+	if err != nil {
+		t.Fatalf("ReviewBranch: %v", err)
+	}
+	if len(review.Commits) != 1 || !strings.Contains(review.Commits[0], "make it win") {
+		t.Errorf("commits = %q", review.Commits)
+	}
+	if len(review.Files) != 1 || review.Files[0] != "M\tREADME.md" {
+		t.Errorf("files = %q", review.Files)
+	}
+	if !strings.Contains(review.Patch, "winner") {
+		t.Error("review patch does not contain candidate change")
+	}
+
+	if err := Promote(repo, tree); err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	if got := mustGit(t, repo, "log", "-1", "--format=%s"); got != "make it win" {
+		t.Errorf("source HEAD = %q", got)
+	}
+}
+
+func TestPromoteRefusesDirtyCandidate(t *testing.T) {
+	repo := newRepo(t)
+	mgr := New(filepath.Join(t.TempDir(), "worktrees"))
+	tree, err := mgr.Create(repo, "dirty", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree.Path, "answer.txt"), []byte("not committed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Promote(repo, tree); err == nil || !strings.Contains(err.Error(), "uncommitted") {
+		t.Fatalf("Promote error = %v, want dirty candidate refusal", err)
+	}
+}

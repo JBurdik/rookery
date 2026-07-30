@@ -2,6 +2,7 @@ package cli
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +66,20 @@ func TestEnvFlag(t *testing.T) {
 	}
 	if e["FOO"] != "bar" || e["EMPTY"] != "" {
 		t.Errorf("envFlag = %v, want FOO=bar and EMPTY=", e)
+	}
+}
+
+func TestAgentsExplainRequiresPane(t *testing.T) {
+	err := RunAgents([]string{"explain"})
+	if err == nil || !strings.Contains(err.Error(), "usage: rook agents explain <pane-id>") {
+		t.Errorf("RunAgents(explain) error = %v, want missing-pane usage", err)
+	}
+}
+
+func TestEncodeKeys(t *testing.T) {
+	got := encodeKeys([]string{"hello", "Enter", "C-c", "left", "literal"})
+	want := "hello\r\x03\x1b[Dliteral"
+	if got != want {
+		t.Errorf("encodeKeys = %q, want %q", got, want)
 	}
 }

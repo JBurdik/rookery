@@ -10,6 +10,7 @@
 package integration
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -54,6 +55,12 @@ type Hook struct {
 	Event  string
 	Status string
 	Why    string
+	// SessionRefKey, when set, makes this hook report the agent's session id
+	// instead of a status: the event's JSON payload (piped to the hook on
+	// stdin) is read for this field. Used where an agent's hooks give session
+	// identity but not full lifecycle coverage, so status stays with screen
+	// detection instead of being clobbered by a partial report.
+	SessionRefKey string
 }
 
 // claudeSpec maps Claude Code's hook events onto rookery's three states.
@@ -80,9 +87,41 @@ var claudeSpec = Spec{
 	},
 }
 
+// codexSpec covers Codex CLI. Its hooks don't cover every lifecycle
+// transition (a permission cancellation or user interrupt doesn't reliably
+// fire one), so unlike Claude this integration reports session identity
+// only — status stays with screen detection, same split Herdr draws for
+// Codex.
+var codexSpec = Spec{
+	ID:            "codex",
+	Name:          "Codex CLI",
+	Description:   "the session id at start, for a future resume; status still comes from the screen",
+	ConfigEnv:     "CODEX_HOME",
+	ConfigDirName: ".codex",
+	SettingsFile:  "hooks.json",
+	Hooks: []Hook{
+		{Event: "SessionStart", SessionRefKey: "session_id", Why: "Codex's own session id becomes available"},
+	},
+}
+
+// opencodeSpec covers OpenCode. Unlike Codex, OpenCode's plugin events cover
+// every lifecycle transition, so this one is authoritative status same as
+// Claude's hooks — it just arrives through a JS plugin file instead of a
+// settings.json entry, so it gets its own install/uninstall/status path
+// rather than the generic hooks-merge one.
+var opencodeSpec = Spec{
+	ID:            "opencode",
+	Name:          "OpenCode",
+	Description:   "authoritative status and session id from a plugin",
+	ConfigDirName: filepath.Join(".config", "opencode"),
+	SettingsFile:  filepath.Join("plugin", "rook-agent-state.js"),
+}
+
 // Specs are the agents rookery can integrate with, by id.
 var Specs = map[string]Spec{
-	claudeSpec.ID: claudeSpec,
+	claudeSpec.ID:   claudeSpec,
+	codexSpec.ID:    codexSpec,
+	opencodeSpec.ID: opencodeSpec,
 }
 
 // IDs lists the known integrations.
@@ -152,6 +191,9 @@ func Install(id, path, rookBin string) (Status, error) {
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q (have: %s)", id, strings.Join(IDs(), ", "))
 	}
+	if id == "opencode" {
+		return opencodeInstall(path, rookBin)
+	}
 
 	settings, err := readSettings(path)
 	if err != nil {
@@ -162,13 +204,20 @@ func Install(id, path, rookBin string) (Status, error) {
 	for _, h := range spec.Hooks {
 		entries := arrayOf(hooks, h.Event)
 		entries = dropOurs(entries)
-		entries = append(entries, hookEntry(rookBin, h))
+		entries = append(entries, hookEntry(rookBin, spec.ID, h))
 		hooks[h.Event] = entries
 	}
 	settings["hooks"] = hooks
 
 	if err := writeSettings(path, settings); err != nil {
 		return Status{}, err
+	}
+
+	if id == "codex" {
+		// hooks.json lists the hooks; config.toml is what turns them on.
+		if err := ensureCodexHooksFeature(filepath.Dir(path)); err != nil {
+			return Status{}, err
+		}
 	}
 	return StatusOf(id, path)
 }
@@ -178,6 +227,9 @@ func Uninstall(id, path string) (Status, error) {
 	spec, ok := Specs[id]
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q", id)
+	}
+	if id == "opencode" {
+		return opencodeUninstall(path)
 	}
 
 	settings, err := readSettings(path)
@@ -212,6 +264,9 @@ func StatusOf(id, path string) (Status, error) {
 	if !ok {
 		return Status{}, fmt.Errorf("unknown integration %q", id)
 	}
+	if id == "opencode" {
+		return opencodeStatus(path)
+	}
 	st := Status{ID: spec.ID, Name: spec.Name, Settings: path}
 
 	settings, err := readSettings(path)
@@ -235,12 +290,19 @@ func StatusOf(id, path string) (Status, error) {
 	return st, nil
 }
 
-// hookEntry builds one settings.json hook group.
-func hookEntry(rookBin string, h Hook) map[string]any {
+// hookEntry builds one settings.json (or hooks.json) hook group.
+func hookEntry(rookBin, agentID string, h Hook) map[string]any {
 	// The report is best-effort by design: a hook that fails must never break
 	// the agent, so failure is swallowed here rather than surfacing as a hook
 	// error in the middle of someone's turn.
-	cmd := fmt.Sprintf("%s report --status %s --quiet || true %s", rookBin, h.Status, marker)
+	var cmd string
+	if h.SessionRefKey != "" {
+		cmd = fmt.Sprintf("%s report --agent %s --session-ref-stdin %s --quiet || true %s",
+			rookBin, agentID, h.SessionRefKey, marker)
+	} else {
+		cmd = fmt.Sprintf("%s report --agent %s --status %s --quiet || true %s",
+			rookBin, agentID, h.Status, marker)
+	}
 	return map[string]any{
 		"hooks": []any{
 			map[string]any{
@@ -344,4 +406,108 @@ func arrayOf(parent map[string]any, key string) []any {
 		return existing
 	}
 	return nil
+}
+
+// ensureCodexHooksFeature turns on Codex's hooks feature flag, without which
+// hooks.json is inert. Line-based rather than a full TOML round-trip: this is
+// the user's own config.toml, and reformatting whatever else they wrote by
+// hand is a worse outcome than a slightly naive edit.
+func ensureCodexHooksFeature(dir string) error {
+	path := filepath.Join(dir, "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	updated, changed := setTOMLFeatureHooks(string(data))
+	if !changed {
+		return nil
+	}
+	return os.WriteFile(path, []byte(updated), 0o644)
+}
+
+func setTOMLFeatureHooks(content string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	inFeatures, featuresLine, hooksLine := false, -1, -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inFeatures = trimmed == "[features]"
+			if inFeatures && featuresLine == -1 {
+				featuresLine = i
+			}
+			continue
+		}
+		if inFeatures && strings.HasPrefix(trimmed, "hooks") && strings.Contains(trimmed, "=") {
+			hooksLine = i
+		}
+	}
+
+	switch {
+	case hooksLine != -1:
+		if strings.TrimSpace(lines[hooksLine]) == "hooks = true" {
+			return content, false
+		}
+		lines[hooksLine] = "hooks = true"
+	case featuresLine != -1:
+		out := append([]string{}, lines[:featuresLine+1]...)
+		out = append(out, "hooks = true")
+		lines = append(out, lines[featuresLine+1:]...)
+	default:
+		if strings.TrimSpace(content) != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "[features]", "hooks = true")
+	}
+
+	result := strings.Join(lines, "\n")
+	if !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	return result, true
+}
+
+// opencodeMarker identifies the plugin file rookery installed, the same way
+// marker identifies our entries inside a JSON hooks file.
+const opencodeMarker = "// rookery-integration"
+
+//go:embed assets/opencode-agent-state.js
+var opencodePluginAsset string
+
+// opencodeInstall drops in the plugin file wholesale: unlike the JSON-hooks
+// agents there is no existing file to merge with, so reinstalling simply
+// overwrites it.
+func opencodeInstall(path, rookBin string) (Status, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return Status{}, err
+	}
+	content := strings.Replace(opencodePluginAsset, "__ROOK_BIN__", rookBin, 1)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return Status{}, err
+	}
+	return opencodeStatus(path)
+}
+
+// opencodeUninstall removes the plugin file only if it is ours, so a plugin
+// the user wrote (or renamed) by hand at the same path is left alone.
+func opencodeUninstall(path string) (Status, error) {
+	if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), opencodeMarker) {
+		if err := os.Remove(path); err != nil {
+			return Status{}, err
+		}
+	}
+	return opencodeStatus(path)
+}
+
+func opencodeStatus(path string) (Status, error) {
+	spec := Specs["opencode"]
+	st := Status{ID: spec.ID, Name: spec.Name, Settings: path}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return st, nil
+	}
+	if strings.Contains(string(data), opencodeMarker) {
+		st.Installed = true
+		st.Hooks = 1
+	}
+	return st, nil
 }

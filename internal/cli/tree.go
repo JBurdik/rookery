@@ -118,21 +118,6 @@ func RunGit(args []string) error {
 	return callAndPrint(fs.session, "pane.git", nil)
 }
 
-// RunManager implements `rook manager <text...>` — hand a request to the
-// manager agent, which drives rookery through this same CLI.
-func RunManager(args []string) error {
-	fs := newPaneFlags("manager")
-	cmd := fs.set.String("cmd", "", "agent to start as the manager (default: config's manager_cmd)")
-	if err := fs.parse(args); err != nil {
-		return err
-	}
-	text := strings.Join(fs.args(), " ")
-	if text == "" {
-		return errors.New(`usage: rook manager <what you want done...>`)
-	}
-	return callAndPrint(fs.session, "manager.send", apiproto.ManagerSendParams{Text: text, Cmd: *cmd})
-}
-
 // --- shared helpers ---
 
 func simpleCall(args []string, method string, params any) error {

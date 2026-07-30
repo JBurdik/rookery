@@ -28,9 +28,6 @@ const (
 	// The daemon needs it to decide between a sound (you are here) and an OS
 	// notification (you are somewhere else entirely).
 	TypeClientFocus = "client_focus"
-	// TypeManagerReply carries the manager agent's answer back to the command
-	// bar it was asked from.
-	TypeManagerReply = "manager_reply"
 	// TypeCopy carries yanked text back to the client, which is the process
 	// that owns a terminal and can therefore reach a clipboard (OSC 52).
 	TypeCopy = "copy"
@@ -54,7 +51,6 @@ const (
 	ActionRenameWS     = "rename_workspace"
 	ActionRenamePane   = "rename_pane"
 	ActionGit          = "git"
-	ActionManager      = "manager"
 	// Scroll / copy mode. ActionScroll's Text is the movement: "up", "down",
 	// "page_up", "page_down", "top", "bottom".
 	ActionScrollMode = "scroll_mode"
@@ -89,8 +85,6 @@ type Hello struct {
 	// borders but the user configures the look.
 	DoneColor string `json:"done_color,omitempty"`
 	Blink     bool   `json:"blink,omitempty"`
-	// ManagerCmd is the agent the manager bar talks to.
-	ManagerCmd string `json:"manager_cmd,omitempty"`
 }
 
 // HelloAck acknowledges attach. The state that follows carries everything
@@ -320,12 +314,6 @@ type Copy struct {
 	Text string `json:"text"`
 }
 
-// ManagerReply is the manager agent's answer, for the command bar.
-type ManagerReply struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
 // ErrorFrame reports a problem to the client.
 type ErrorFrame struct {
 	Type    string `json:"type"`
@@ -370,7 +358,6 @@ type Incoming struct {
 	Focused      bool   `json:"focused,omitempty"`
 	DoneColor    string `json:"done_color,omitempty"`
 	Blink        bool   `json:"blink,omitempty"`
-	ManagerCmd   string `json:"manager_cmd,omitempty"`
 	Cols         int    `json:"cols,omitempty"`
 	Rows         int    `json:"rows,omitempty"`
 	Data         string `json:"data,omitempty"`

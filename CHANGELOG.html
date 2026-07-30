@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rook – přehled změn</title>
+    <style>
+      :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+      body { max-width: 48rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.55; }
+      h1 { margin-bottom: 0.2rem; }
+      h2 { margin-top: 2rem; }
+      h3 { margin-top: 1.4rem; }
+      code { padding: 0.12em 0.3em; border-radius: 0.25em; background: color-mix(in srgb, currentColor 10%, transparent); }
+    </style>
+  </head>
+  <body>
+    <h1>Přehled změn Rooku</h1>
+
+    <h2>Nevydaná verze</h2>
+
+    <h3>Nové funkce</h3>
+    <ul>
+      <li>Připojení ke vzdálené relaci přes SSH pomocí <code>rook attach [session] --remote user@host</code>; unixové sockety Rooku zůstávají bezpečně na vzdáleném počítači.</li>
+      <li>Správa relací: <code>rook status</code>, <code>rook reload</code>, <code>rook delete</code> a jmenný prostor <code>rook session</code>.</li>
+      <li>Bezpečnější automatizace panelů: odeslání doslovného textu, kláves nebo příkazu; inspekce panelu, hledání souseda, přesun mezi záložkami a čekání na výstup pomocí textu či regulárního výrazu.</li>
+      <li>Vyhodnocení a povýšení výsledků fan-outu: porovnání commitů kandidátů, výpis patche a bezpečný fast-forward čistého vítězného řešení.</li>
+      <li><code>rook agents explain &lt;panel&gt;</code> vysvětluje, proč detekce zvolila aktuální stav agenta, včetně vítězného pravidla a vstupních signálů.</li>
+      <li>Doplňování příkazů pro Bash a Zsh: <code>source &lt;(rook completion bash)</code> nebo <code>source &lt;(rook completion zsh)</code>.</li>
+      <li>Rozšířená podpora kláves pro agentní TUI: modifikované navigační a editační klávesy i F1–F12 ve formátu kompatibilním s xtermem.</li>
+      <li>Průvodce prvotním nastavením integrací pro Claude Code, Codex CLI a OpenCode.</li>
+    </ul>
+
+    <h3>Změny</h3>
+    <ul>
+      <li>Byl odstraněn manager bar a zvláštní mechanismus manager agenta; spolehlivé frontování vstupu zůstává běžnou vlastností panelů.</li>
+      <li>README a přibalená instrukce pro agenty nyní odpovídají aktuálním příkazům.</li>
+    </ul>
+  </body>
+</html>

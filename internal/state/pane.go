@@ -62,10 +62,6 @@ type Pane struct {
 	Fan      string
 	Branch   string
 	Worktree string
-	// Manager marks the pane holding the manager agent — the one the command
-	// bar talks to. Only rookery's memory of which pane it is makes it
-	// special; it is an ordinary pane otherwise.
-	Manager bool
 	// DoneAt is when a turn last ended. The pane's border blinks for a few
 	// seconds afterwards: a badge you have to be looking at is no use if the
 	// thing that changed is on the screen you are already staring at.

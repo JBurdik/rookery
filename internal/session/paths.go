@@ -88,3 +88,16 @@ func List() ([]string, error) {
 	}
 	return names, nil
 }
+
+// Remove permanently deletes a stopped session, including its saved layout
+// and daemon log. Callers must check liveness first: unlike Cleanup, this is
+// intentionally not appropriate for a running daemon.
+func Remove(name string) error {
+	if name == "" || name == "." || filepath.Base(name) != name {
+		return fmt.Errorf("invalid session name %q", name)
+	}
+	if err := os.RemoveAll(Dir(name)); err != nil {
+		return fmt.Errorf("remove session %q: %w", name, err)
+	}
+	return nil
+}

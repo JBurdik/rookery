@@ -26,14 +26,24 @@ func RunPane(args []string) error {
 		return paneList(args[1:])
 	case "new", "create", "split":
 		return paneNew(args[1:])
-	case "send", "send-keys", "run":
-		return paneSend(args[1:])
+	case "send", "run":
+		return paneRun(args[1:])
+	case "send-text":
+		return paneSendText(args[1:])
+	case "send-keys":
+		return paneSendKeys(args[1:])
 	case "read":
 		return paneRead(args[1:])
 	case "status":
 		return paneStatus(args[1:])
 	case "focus":
 		return paneFocus(args[1:])
+	case "inspect":
+		return paneInspect(args[1:])
+	case "neighbor":
+		return paneNeighbor(args[1:])
+	case "move":
+		return paneMove(args[1:])
 	case "rename":
 		return paneRename(args[1:])
 	case "zoom":
@@ -141,7 +151,7 @@ func paneCurrent(args []string) error {
 
 func boolPtr(b bool) *bool { return &b }
 
-func paneSend(args []string) error {
+func paneRun(args []string) error {
 	fs := newPaneFlags("pane send")
 	noEnter := fs.set.Bool("no-enter", false, "do not append a carriage return")
 	if err := fs.parse(args); err != nil {
@@ -154,12 +164,69 @@ func paneSend(args []string) error {
 
 	// Remaining words are joined with spaces so an unquoted prompt still
 	// arrives intact: `rook pane send p2 fix the failing test`.
-	params := apiproto.PaneSendKeysParams{
-		PaneID:     rest[0],
-		Text:       strings.Join(rest[1:], " "),
-		PressEnter: !*noEnter,
+	params := apiproto.PaneRunParams{PaneID: rest[0], Text: strings.Join(rest[1:], " ")}
+	if *noEnter { // preserved for existing `pane send --no-enter` scripts.
+		return callAndPrint(fs.session, "pane.send_text", apiproto.PaneSendTextParams{PaneID: params.PaneID, Text: params.Text})
 	}
-	return callAndPrint(fs.session, "pane.send_keys", params)
+	return callAndPrint(fs.session, "pane.run", params)
+}
+
+func paneSendText(args []string) error {
+	fs := newPaneFlags("pane send-text")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	rest := fs.args()
+	if len(rest) < 2 {
+		return errors.New("usage: rook pane send-text <pane-id> <text...>")
+	}
+	return callAndPrint(fs.session, "pane.send_text", apiproto.PaneSendTextParams{PaneID: rest[0], Text: strings.Join(rest[1:], " ")})
+}
+
+// paneSendKeys writes terminal key sequences without an implicit Enter. The
+// shell-friendly names cover the keys agents normally need for cancellation
+// and TUI navigation; unknown tokens are sent literally.
+func paneSendKeys(args []string) error {
+	fs := newPaneFlags("pane send-keys")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	rest := fs.args()
+	if len(rest) < 2 {
+		return errors.New("usage: rook pane send-keys <pane-id> <key...>")
+	}
+	return callAndPrint(fs.session, "pane.send_keys", apiproto.PaneSendKeysParams{PaneID: rest[0], Text: encodeKeys(rest[1:])})
+}
+
+func encodeKeys(keys []string) string {
+	var b strings.Builder
+	for _, key := range keys {
+		switch strings.ToLower(key) {
+		case "enter", "return":
+			b.WriteByte('\r')
+		case "tab":
+			b.WriteByte('\t')
+		case "escape", "esc":
+			b.WriteByte(0x1b)
+		case "c-c", "ctrl-c":
+			b.WriteByte(3)
+		case "c-d", "ctrl-d":
+			b.WriteByte(4)
+		case "c-z", "ctrl-z":
+			b.WriteByte(26)
+		case "up":
+			b.WriteString("\x1b[A")
+		case "down":
+			b.WriteString("\x1b[B")
+		case "right":
+			b.WriteString("\x1b[C")
+		case "left":
+			b.WriteString("\x1b[D")
+		default:
+			b.WriteString(key)
+		}
+	}
+	return b.String()
 }
 
 func paneRead(args []string) error {
@@ -224,6 +291,55 @@ func paneFocus(args []string) error {
 		return err
 	}
 	return callAndPrint(fs.session, "pane.focus", apiproto.PaneFocusParams{PaneID: paneID})
+}
+
+func paneInspect(args []string) error {
+	fs := newPaneFlags("pane inspect")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	paneID, err := fs.firstArg("pane inspect")
+	if err != nil {
+		return err
+	}
+	return callAndPrint(fs.session, "pane.inspect", apiproto.PaneInspectParams{PaneID: paneID})
+}
+
+func paneNeighbor(args []string) error {
+	fs := newPaneFlags("pane neighbor")
+	direction := fs.set.String("direction", "", "left, right, up or down")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	paneID, err := fs.firstArg("pane neighbor")
+	if err != nil {
+		return err
+	}
+	if *direction == "" && len(fs.args()) > 1 {
+		*direction = fs.args()[1]
+	}
+	if *direction == "" {
+		return errors.New("usage: rook pane neighbor <pane-id> --direction left|right|up|down")
+	}
+	return callAndPrint(fs.session, "pane.neighbor", apiproto.PaneNeighborParams{PaneID: paneID, Direction: *direction})
+}
+
+func paneMove(args []string) error {
+	fs := newPaneFlags("pane move")
+	tab := fs.set.String("tab", "", "destination tab")
+	from := fs.set.String("from", "", "destination pane to split")
+	direction := fs.set.String("direction", "", "right or down")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	paneID, err := fs.firstArg("pane move")
+	if err != nil {
+		return err
+	}
+	if *tab == "" {
+		return errors.New("usage: rook pane move <pane-id> --tab <tab-id> [--from pane] [--direction right|down]")
+	}
+	return callAndPrint(fs.session, "pane.move", apiproto.PaneMoveParams{PaneID: paneID, TabID: *tab, From: *from, Direction: *direction})
 }
 
 func paneKill(args []string) error {
@@ -377,11 +493,16 @@ func paneUsage() {
 Usage:
   rook pane ls                                   list panes (JSON)
   rook pane new [flags] [-- cmd args...]         spawn a pane (no cmd = $SHELL)
-  rook pane send <pane> [text...]                type into a pane, then Enter
+  rook pane run <pane> [text...]                 type into a pane, then Enter
+  rook pane send-text <pane> <text...>           type literally, without Enter
+  rook pane send-keys <pane> <key...>            send Enter, C-c, arrows, etc.
   rook pane read <pane> [flags]                  read a pane's screen or scrollback
   rook pane status <pane>                        one pane's run and agent state
   rook pane current                              the pane this process runs in
   rook pane focus <pane>                         show this pane in attached clients
+  rook pane inspect <pane>                       pane geometry, focus and neighbours
+  rook pane neighbor <pane> --direction right    find an adjacent pane
+  rook pane move <pane> --tab TAB                move PTY into another tab
   rook pane rename <pane> <label>                change a pane's sidebar label
   rook pane zoom [--on|--off]                    focused pane fills the screen
   rook pane kill <pane>                          terminate a pane
@@ -404,7 +525,7 @@ pane read:
 
 Examples:
   rook pane new --label reviewer --no-focus -- claude
-  rook pane send p2 review the current diff
+  rook pane run p2 review the current diff
   rook wait agent-status p2 --status done,blocked --timeout 120000
   rook pane read p2 --scrollback --lines 60 --raw
   rook api pane.list

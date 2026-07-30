@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rookery — a terminal multiplexer for coding agents</title>
+<meta name="description" content="rookery keeps your agents' PTYs alive in a detachable daemon, shows you which one wants you, and lets agents drive the whole thing over a JSON-RPC socket.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1017;
+    --bg-raise: #131720;
+    --bg-sink: #090b10;
+    --fg: #d5dbe6;
+    --fg-dim: #8b95a7;
+    --fg-faint: #5c6577;
+    --line: #232a36;
+    --accent: #7aa2f7;
+    --working: #56b6c2;
+    --blocked: #e0af68;
+    --done: #9ece6a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "0xProto Nerd Font Mono", Menlo, Consolas, monospace;
+    --col: min(72rem, 100% - 2.5rem);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 400 clamp(0.95rem, 0.9rem + 0.2vw, 1.05rem)/1.65 var(--mono);
+    -webkit-font-smoothing: antialiased;
+    /* faint scanline grid — terminal-native without being a costume */
+    background-image:
+      radial-gradient(60rem 40rem at 15% -10%, #1a2133 0%, transparent 70%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+  .wrap { width: var(--col); margin-inline: auto; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
+  }
+  h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+  code, kbd, pre { font-family: var(--mono); }
+  .skip {
+    position: absolute; left: -9999px;
+  }
+  .skip:focus { left: 1rem; top: 1rem; position: fixed; z-index: 9; background: var(--bg-raise);
+    padding: .5rem .75rem; border: 1px solid var(--accent); }
+
+  /* ── chrome ─────────────────────────────────────────────── */
+  header.bar {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar .wrap { display: flex; align-items: center; gap: 1.25rem; height: 3.25rem; }
+  .brand { font-weight: 600; letter-spacing: .02em; }
+  .brand::before { content: "▚ "; color: var(--accent); }
+  .bar nav { margin-left: auto; display: flex; gap: 1.1rem; flex-wrap: wrap; font-size: .85em; }
+  .bar nav a { color: var(--fg-dim); text-decoration: none; }
+  .bar nav a:hover { color: var(--fg); }
+  @media (max-width: 44rem) { .bar nav a.hide-sm { display: none; } }
+
+  /* ── hero ───────────────────────────────────────────────── */
+  .hero { padding: clamp(3rem, 8vw, 6rem) 0 2rem; }
+  .hero-grid { display: grid; gap: clamp(2rem, 4vw, 3.5rem); grid-template-columns: 1fr; align-items: start; }
+  @media (min-width: 62rem) { .hero-grid { grid-template-columns: 1fr 1.1fr; } }
+  .hero h1 { font-size: clamp(2rem, 1.3rem + 3.2vw, 3.4rem); margin: 0 0 1rem; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .lede { color: var(--fg-dim); font-size: 1.05em; margin: 0 0 1.75rem; max-width: 48ch; }
+  .cta { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+  .btn {
+    display: inline-block; padding: .6rem 1.1rem; border: 1px solid var(--line);
+    border-radius: 3px; text-decoration: none; color: var(--fg); background: var(--bg-raise);
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary { background: var(--accent); color: #0b0e14; border-color: var(--accent); font-weight: 600; }
+  .btn-primary:hover { background: #97b6f9; color: #0b0e14; }
+  .tagline-list { list-style: none; padding: 0; margin: 2rem 0 0; color: var(--fg-dim); font-size: .9em; }
+  .tagline-list li { display: flex; gap: .6rem; padding: .2rem 0; }
+  .tagline-list li::before { content: "→"; color: var(--fg-faint); }
+
+  /* ── terminal frame ─────────────────────────────────────── */
+  .term {
+    background: var(--bg-sink); border: 1px solid var(--line); border-radius: 5px;
+    box-shadow: 0 1.5rem 3rem -1rem #0006;
+    overflow: hidden;
+  }
+  .term-head {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .45rem .7rem; border-bottom: 1px solid var(--line);
+    background: var(--bg-raise); font-size: .78em; color: var(--fg-faint);
+  }
+  .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--line); }
+  .term-head .title { margin-left: .4rem; }
+  .term-head .badge {
+    margin-left: auto; background: var(--blocked); color: #1b1400;
+    border-radius: 2px; padding: 0 .35rem; font-weight: 700;
+  }
+  .term pre {
+    margin: 0; padding: .9rem 1rem 1.1rem; overflow-x: auto;
+    font-size: clamp(.66rem, .52rem + .55vw, .82rem); line-height: 1.55; tab-size: 2;
+  }
+  .term pre b { font-weight: 400; }
+  .w { color: var(--working); }  .bk { color: var(--blocked); }
+  .d { color: var(--done); }     .a { color: var(--accent); }
+  .dim { color: var(--fg-faint); }
+  .sel { background: #1e2637; color: #fff; }
+  .cursor {
+    display: inline-block; width: .55em; height: 1.05em; vertical-align: text-bottom;
+    background: var(--accent); animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── sections ───────────────────────────────────────────── */
+  section { padding: clamp(2.5rem, 6vw, 4.5rem) 0; border-top: 1px solid var(--line); }
+  .eyebrow { color: var(--accent); font-size: .78em; letter-spacing: .14em; text-transform: uppercase; margin: 0 0 .6rem; }
+  section h2 { font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem); margin: 0 0 .75rem; }
+  section > .wrap > p { color: var(--fg-dim); max-width: 68ch; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); margin-top: 2rem; }
+  .card { background: var(--bg-raise); border: 1px solid var(--line); border-radius: 4px; padding: 1.1rem 1.15rem; }
+  .card h3 { margin: 0 0 .5rem; font-size: 1rem; }
+  .card h3 .g { margin-right: .5rem; }
+  .card p { margin: 0; color: var(--fg-dim); font-size: .9em; }
+  .card code { color: var(--fg); }
+  .two { display: grid; gap: clamp(1.5rem, 3vw, 2.5rem); grid-template-columns: 1fr; align-items: start; margin-top: 2rem; }
+  @media (min-width: 58rem) { .two { grid-template-columns: 1fr 1fr; } }
+
+  /* ── code blocks ────────────────────────────────────────── */
+  .code { position: relative; background: var(--bg-sink); border: 1px solid var(--line); border-radius: 4px; }
+  .code pre { margin: 0; padding: .9rem 4.5rem .9rem 1rem; overflow-x: auto; font-size: .85em; line-height: 1.7; }
+  .code .cm { color: var(--fg-faint); }
+  .code .cmd::before { content: "$ "; color: var(--accent); }
+  .copy {
+    position: absolute; top: .4rem; right: .4rem; font: inherit; font-size: .72em;
+    background: var(--bg-raise); color: var(--fg-dim); border: 1px solid var(--line);
+    border-radius: 3px; padding: .15rem .5rem; cursor: pointer;
+  }
+  .copy:hover { color: var(--fg); border-color: var(--accent); }
+
+  /* ── tables ─────────────────────────────────────────────── */
+  .scroll-x { overflow-x: auto; margin-top: 1.5rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .88em; min-width: 30rem; }
+  caption { text-align: left; color: var(--fg-faint); font-size: .85em; padding-bottom: .5rem; }
+  th, td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--fg-dim); font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+  kbd {
+    background: var(--bg-raise); border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 3px; padding: .05rem .35rem; font-size: .95em;
+  }
+  .g { font-weight: 700; }
+  .g.working { color: var(--working); } .g.blocked { color: var(--blocked); }
+  .g.done { color: var(--done); } .g.idle { color: var(--fg-dim); } .g.unknown { color: var(--fg-faint); }
+
+  details { border-top: 1px solid var(--line); }
+  details summary { cursor: pointer; padding: .75rem 0; color: var(--fg); }
+  details summary::marker { color: var(--accent); }
+  details p, details ul { color: var(--fg-dim); font-size: .9em; margin-top: 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3.5rem; color: var(--fg-faint); font-size: .85em; }
+  footer .wrap { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <div class="wrap">
+    <span class="brand">rookery</span>
+    <nav aria-label="Sections">
+      <a href="#model">Model</a>
+      <a href="#status">Status</a>
+      <a href="#fan">Fan-out</a>
+      <a href="#api">API</a>
+      <a href="#remote" class="hide-sm">Remote</a>
+      <a href="#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="hero wrap">
+  <div class="hero-grid">
+    <div>
+      <h1>A terminal multiplexer for <em>coding agents</em>.</h1>
+      <p class="lede">
+        A detachable daemon keeps the PTYs alive. A Bubble Tea client attaches and detaches
+        at will. And the agents drive the whole thing over a JSON-RPC socket — spawning each
+        other, watching each other's status, blocking until each other's work is done.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#install">Install it</a>
+        <a class="btn" href="#api">Read the API</a>
+      </div>
+      <ul class="tagline-list">
+        <li>Sessions survive detach, disconnect and a daemon restart</li>
+        <li>Every pane says whether its agent is working, blocked or done</li>
+        <li>One prompt, several agents, one git worktree each</li>
+        <li>Single Go binary, no server to expose, no config required</li>
+      </ul>
+    </div>
+
+    <div class="term" role="img" aria-label="Screenshot of the rookery TUI: a sidebar listing workspaces and agents, and three panes — one agent cogitating, one asking a yes/no question, one shell.">
+      <div class="term-head">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="title">rook — default</span>
+        <span class="badge">2</span>
+      </div>
+<pre aria-hidden="true"> <span class="dim">spaces           │</span> <span class="a">1</span>  2  3
+ <span class="d">●</span> <span class="sel">multiplexer    </span><span class="dim">│</span><span class="dim">1</span> <span class="w">▶</span> Refactor the parser  <span class="dim">│</span><span class="dim">2</span> <span class="bk">●</span> tests
+   <span class="sel dim">main           </span><span class="dim">│</span><span class="w">✳</span> Cogitating… <span class="dim">(12s)</span>     <span class="dim">│</span>Run again? (y/n)<span class="cursor"></span>
+   review         <span class="dim">│</span>                         <span class="dim">├────────────────────</span>
+                  <span class="dim">│</span>                         <span class="dim">│</span><span class="dim">3</span> <span class="dim">●</span> shell
+ <span class="dim">agents           │</span>                         <span class="dim">│</span>$ <span class="dim">git status</span>
+  <span class="dim">multiplexer</span>     <span class="dim">│</span>                         <span class="dim">│</span><span class="dim">On branch</span> main
+ <span class="bk">•</span><span class="bk">●</span> Fix the flaky… <span class="dim">│</span>                         <span class="dim">│</span>
+  <span class="d">●</span> tests          <span class="dim">│</span>                         <span class="dim">│</span>
+</pre>
+    </div>
+  </div>
+</div>
+
+<section id="model">
+  <div class="wrap">
+    <p class="eyebrow">The model</p>
+    <h2>Workspaces hold tabs, tabs hold panes.</h2>
+    <p>
+      A <strong>session</strong> holds <strong>workspaces</strong>, a workspace holds
+      <strong>tabs</strong>, a tab holds a layout of <strong>panes</strong>. One workspace per
+      repo or task, tabs to separate views inside it, panes split right and down. Ids say where
+      something lives: <code>w1</code>, <code>w1:t2</code>, <code>w1:p3</code>.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="g a">▸</span>Workspaces follow your directory</h3>
+        <p><code>cd</code> somewhere else and the name and git branch change with it. Name one
+        yourself and the name sticks — but the directory and branch keep tracking, because a name
+        is a choice and a stale branch is just wrong.</p>
+      </div>
+      <div class="card">
+        <h3><span class="g a">▸</span>Agents named by what they're doing</h3>
+        <p>Read from the terminal title the agent sets — "Refactor the parser", not four rows all
+        reading <code>claude</code>. A manual <code>rook pane rename</code> always wins.</p>
+      </div>
+      <div class="card">
+        <h3><span class="g a">▸</span>Only agents in the agents panel</h3>
+        <p>Plain shells are deliberately left out: the panel answers "who needs me", and a shell
+        sitting at a prompt is not an answer.</p>
+      </div>
+      <div class="card">
+        <h3><span class="g a">▸</span>The layout survives a restart</h3>
+        <p>Workspaces, tabs, the split tree and its ratios are saved whenever they change and
+        read back at startup. Panes return as a shell in the directory they were in — relaunching
+        eight agents isn't a decision a multiplexer should make for you.</p>
+      </div>
+      <div class="card">
+        <h3><span class="g a">▸</span>Scroll, select, copy over OSC 52</h3>
+        <p><kbd>prefix</kbd> <kbd>[</kbd> scrolls back through the pane's transcript. Copying goes
+        through OSC 52, so it reaches your real clipboard even at the far end of an SSH connection.</p>
+      </div>
+      <div class="card">
+        <h3><span class="g a">▸</span>Mouse, menus and a fuzzy jump</h3>
+        <p>Click to focus, drag a divider to resize, right-click any pane, tab or workspace for a
+        context menu. <kbd>prefix</kbd> <kbd>f</kbd> fuzzy-finds every agent, workspace and tab.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="status">
+  <div class="wrap">
+    <p class="eyebrow">Agent-aware</p>
+    <h2>Which agent wants you, at a glance.</h2>
+    <p>
+      Every pane carries a status glyph — in the sidebar and in its own header. A workspace row
+      carries its <em>aggregate</em> status, so a workspace with a blocked agent inside looks
+      different from a merely idle one even with colour turned off.
+    </p>
+
+    <div class="scroll-x">
+      <table>
+        <caption>Default (unicode) glyphs. <code>nerd</code> and <code>ascii</code> themes ship too.</caption>
+        <thead><tr><th>Glyph</th><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><span class="g working">▖▘▝▗</span></td><td>working</td><td>animated — the agent is running a turn</td></tr>
+          <tr><td><span class="g blocked">●</span></td><td>blocked</td><td>it is asking for input or confirmation — it wants you</td></tr>
+          <tr><td><span class="g done">●</span></td><td>done</td><td>it finished and you have not looked yet</td></tr>
+          <tr><td><span class="g idle">●</span></td><td>idle</td><td>it finished and you have looked</td></tr>
+          <tr><td><span class="g unknown">●</span></td><td>unknown</td><td>not a recognised agent — a shell, a server, a test run</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="two">
+      <div>
+        <h3>Detection you can correct</h3>
+        <p>Status comes from prioritised rules in per-agent manifests. The built-in set is embedded,
+        so it works with nothing on disk — and a file in <code>~/.rook/agents</code> with the same
+        <code>id</code> replaces a built-in rather than fighting it.</p>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook agents ls</span>            <span class="cm"># known agents, rule counts</span>
+<span class="cmd">rook agents show claude</span>   <span class="cm"># one manifest, rules and all</span>
+<span class="cmd">rook agents init</span>          <span class="cm"># copy the built-ins to edit</span></pre>
+        </div>
+      </div>
+      <div>
+        <h3>Integrations beat heuristics</h3>
+        <p>Screen detection is a guess; an integration replaces it with facts. Claude Code's hook
+        events map exactly onto rookery's three states, and OpenCode's plugin events cover every
+        transition. Codex reports its session id. A fresh report wins over the screen — and if the
+        reports stop, rookery falls back to reading the screen rather than leaving a pane stuck busy.</p>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook setup</span>                        <span class="cm"># interactive wizard</span>
+<span class="cmd">rook integration status</span>            <span class="cm"># every config found</span>
+<span class="cmd">rook integration install claude</span>
+<span class="cmd">rook report --status blocked --agent mine</span></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="scroll-x">
+      <table>
+        <caption>Claude Code hooks, as installed by <code>rook integration install claude</code>.</caption>
+        <thead><tr><th>Hook</th><th>Status</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><code>UserPromptSubmit</code></td><td>working</td><td>a turn started</td></tr>
+          <tr><td><code>Stop</code>, <code>StopFailure</code></td><td>idle</td><td>the turn ended</td></tr>
+          <tr><td><code>PermissionRequest</code></td><td>blocked</td><td>waiting on you to allow something</td></tr>
+          <tr><td><code>Elicitation</code></td><td>blocked</td><td>an MCP server wants input</td></tr>
+          <tr><td><code>Notification</code></td><td>blocked</td><td>Claude Code raised a notification</td></tr>
+          <tr><td><code>SessionStart</code></td><td>idle</td><td>it is up and waiting</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:2rem">
+      Unread results raise a count badge on the workspace row, the <code>agents</code> heading and
+      the tab strip — cleared as soon as the pane is on screen, because you can read a pane you
+      aren't typing into. A border blink and one sound cover the two transitions worth
+      interrupting for: an agent that just got <strong>blocked</strong>, and one that
+      <strong>finished with nobody watching</strong>. The daemon plays it, so you still get pinged
+      after detaching. With your terminal unfocused it's joined by an OS notification.
+    </p>
+  </div>
+</section>
+
+<section id="fan">
+  <div class="wrap">
+    <p class="eyebrow">Fan-out</p>
+    <h2>One prompt, several agents, one checkout each.</h2>
+    <p>
+      Each agent gets its own tab, its own worktree, and its own branch
+      <code>rook/&lt;name&gt;-&lt;n&gt;</code>. Three agents on one task therefore cannot fight over
+      the index, and comparing their answers is a diff rather than three transcripts.
+    </p>
+    <div class="two">
+      <div class="code">
+        <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook fan "make the flaky auth test pass" --agents 3</span>
+<span class="cmd">rook watch --status done,blocked</span>   <span class="cm"># tell me when they land</span>
+<span class="cmd">rook fan ls</span>                          <span class="cm"># who did what</span>
+<span class="cmd">rook fan review fan1</span>                 <span class="cm"># compare candidates</span>
+<span class="cmd">rook fan promote fan1 fan1-2 --apply</span> <span class="cm"># ff a clean winner</span>
+<span class="cmd">rook fan clean fan1 --force</span>          <span class="cm"># bin the rest</span></pre>
+      </div>
+      <div class="term">
+        <div class="term-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title">rook fan ls</span></div>
+<pre>fan1  <span class="dim">w1:p2</span>  <span class="d">done</span>     rook/fan1-1  2 files changed, 31 insertions(+)
+fan1  <span class="dim">w1:p3</span>  <span class="bk">blocked</span>  rook/fan1-2  1 file changed, 4 insertions(+)
+fan1  <span class="dim">w1:p4</span>  <span class="d">done</span>     rook/fan1-3  1 new file(s)</pre>
+      </div>
+    </div>
+    <p style="margin-top:1.75rem">
+      Untracked files are counted separately on purpose: <code>git diff</code> ignores them, so an
+      agent whose whole contribution was a new file used to look like it had done nothing.
+      <code>fan clean</code> is all-or-nothing — if any worktree has uncommitted work it removes
+      nothing and says which. <code>fan promote --apply</code> only fast-forwards a clean source
+      branch to a clean candidate, and keeps every worktree so nothing is destroyed while you
+      inspect the result.
+    </p>
+  </div>
+</section>
+
+<section id="api">
+  <div class="wrap">
+    <p class="eyebrow">Automation API</p>
+    <h2>Built to be driven by the agents inside it.</h2>
+    <p>
+      Every pane gets <code>ROOK_SESSION</code>, <code>ROOK_PANE</code> and <code>ROOK_ENV=1</code>,
+      so an agent <em>inside</em> a pane can drive rookery with no configuration. Every
+      <code>rook pane</code> and <code>rook wait</code> subcommand prints the raw API result as
+      indented JSON, so a tool call parses one output dialect.
+    </p>
+    <div class="two">
+      <div>
+        <h3>Spawn, send, read</h3>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook pane current</span>                  <span class="cm"># which pane am I?</span>
+<span class="cmd">rook pane new --label reviewer --no-focus -- claude</span>
+<span class="cmd">rook pane send p2 review the current diff</span>
+<span class="cmd">rook pane read p2 --scrollback --lines 60 --raw</span>
+<span class="cmd">rook api pane.list</span>                 <span class="cm"># any method, raw</span></pre>
+        </div>
+        <p>Input is measured, not assumed: the Enter is a separate keypress 150&nbsp;ms after the
+        text, because text and its carriage return in one write look like a paste and land
+        <em>in</em> the composer. Messages queue until the agent's UI is actually up, so a
+        fan-out of five doesn't quietly become a fan-out of two.</p>
+      </div>
+      <div>
+        <h3>Block instead of poll</h3>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook pane send p2 run the test suite</span>
+<span class="cmd">rook wait agent-status p2 --status done,blocked \
+    --timeout 300000 &amp;&amp; rook pane read p2 --raw</span></pre>
+        </div>
+        <p><code>rook wait</code> blocks in the daemon until the pane reaches a wanted state — exit
+        0 on a match, 1 on timeout, so it chains. It works for plain commands too: the daemon asks
+        the kernel which process group owns the PTY, so a shell running <code>sleep 30</code> is
+        <code>working</code> even though it prints nothing.</p>
+        <div class="code" style="margin-top:1rem">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook watch --status blocked | while read -r ev; do
+    say "$(jq -r .label &lt;&lt;&lt;"$ev") needs you"
+  done</span></pre>
+        </div>
+        <p><code>rook watch</code> streams NDJSON — <code>agent_status</code>, <code>pane_new</code>,
+        <code>pane_closed</code>, <code>pane_exit</code> — one flat JSON object per line, every field
+        one <code>jq</code> hop away. Events are dropped rather than queued without bound if a
+        consumer falls behind, and the drop is counted rather than hidden.</p>
+      </div>
+    </div>
+    <p style="margin-top:1.75rem">
+      <code>rook skill --install</code> writes the agent-facing skill into the config your agent
+      actually loads: how to spawn siblings without stealing focus, how to wait instead of poll, how
+      to fan a task out, and the etiquette of not killing panes it did not create. It tells the
+      agent to do nothing unless <code>ROOK_ENV=1</code>.
+    </p>
+  </div>
+</section>
+
+<section id="remote">
+  <div class="wrap">
+    <p class="eyebrow">Remote attach</p>
+    <h2>SSH carries the terminal. Nothing else moves.</h2>
+    <div class="two">
+      <div>
+        <p>If rookery is installed on a machine you can reach over SSH, its daemon and PTYs stay
+        entirely on that machine; your local terminal just runs the remote attach client.</p>
+        <p>SSH owns authentication, host aliases and connection recovery. This is deliberately
+        <strong>not</strong> a network-exposed rook socket: the remote daemon keeps using its local
+        Unix sockets and SSH carries only the interactive terminal.</p>
+      </div>
+      <div class="code">
+        <button class="copy" type="button">copy</button>
+<pre><span class="cmd">rook attach review --remote devbox</span>
+<span class="cmd">rook --remote devbox review</span>   <span class="cm"># equivalently</span></pre>
+      </div>
+    </div>
+    <div class="scroll-x">
+      <table>
+        <caption>Sessions</caption>
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>rook</code></td><td>attach to the default session, starting it if needed</td></tr>
+          <tr><td><code>rook serve [--session NAME] [-f]</code></td><td>start the daemon (<code>-f</code> stays in the foreground)</td></tr>
+          <tr><td><code>rook ls</code></td><td>list sessions and pane counts</td></tr>
+          <tr><td><code>rook status [session]</code></td><td>compact session and agent-status summary</td></tr>
+          <tr><td><code>rook reload [session]</code></td><td>reload daemon sound settings and agent manifests</td></tr>
+          <tr><td><code>rook kill</code> / <code>rook delete</code></td><td>stop a session / permanently remove a stopped one</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="keys">
+  <div class="wrap">
+    <p class="eyebrow">Keys</p>
+    <h2><kbd>ctrl+b</kbd> is the prefix.</h2>
+    <p>
+      <kbd>prefix</kbd> <kbd>?</kbd> shows the list in the app, generated from your own keymap.
+      Everything is remappable in <code>~/.rook/hotkeys.json</code>, the prefix included — and new
+      actions from a later build are merged into your file rather than overwriting your bindings.
+    </p>
+    <div class="scroll-x">
+      <table>
+        <thead><tr><th>Key</th><th>Action</th><th>Key</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>c</kbd></td><td>new tab</td><td><kbd>N</kbd></td><td>new workspace</td></tr>
+          <tr><td><kbd>n</kbd> / <kbd>p</kbd></td><td>next / previous tab</td><td><kbd>w</kbd> / <kbd>W</kbd></td><td>next / previous workspace</td></tr>
+          <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>jump to tab</td><td><kbd>b</kbd></td><td>toggle sidebar</td></tr>
+          <tr><td><kbd>v</kbd> / <kbd>-</kbd></td><td>split right / down</td><td><kbd>f</kbd> / <kbd>/</kbd></td><td>go to (fuzzy)</td></tr>
+          <tr><td><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></td><td>move focus</td><td><kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></td><td>swap pane</td></tr>
+          <tr><td><kbd>z</kbd> / <kbd>x</kbd></td><td>zoom / close pane</td><td><kbd>s</kbd></td><td>resize mode</td></tr>
+          <tr><td><kbd>[</kbd> / <kbd>esc</kbd></td><td>scroll &amp; copy mode</td><td><kbd>m</kbd></td><td>toggle mouse capture</td></tr>
+          <tr><td><kbd>r</kbd> / <kbd>T</kbd> / <kbd>R</kbd></td><td>rename pane / tab / workspace</td><td><kbd>q</kbd></td><td>detach</td></tr>
+          <tr><td><kbd>G</kbd></td><td>git UI in a new pane</td><td><kbd>?</kbd></td><td>help</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1.5rem">Arrows work anywhere the <kbd>hjkl</kbd> do.</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="eyebrow">Install</p>
+    <h2>One Go binary.</h2>
+    <div class="two">
+      <div>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">go build -o rook ./cmd/rook</span>
+<span class="cmd">./rook</span>   <span class="cm"># attach the default session, starting the daemon</span></pre>
+        </div>
+        <p style="margin-top:1rem">Or via the justfile:</p>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre><span class="cmd">just install</span>   <span class="cm"># rook on your PATH, daemon restarted</span>
+<span class="cmd">just setup</span>     <span class="cm"># that, plus the hooks and the agent skill</span></pre>
+        </div>
+        <p style="margin-top:1rem">
+          Which is <code>go install ./cmd/rook</code> — no copy step, no <code>sudo</code>. The
+          justfile is there for the part that's easy to forget: <strong>a new binary changes nothing
+          until the running daemon goes away</strong>, so <code>install</code> kills it. The client
+          says so itself when the two versions differ.
+        </p>
+      </div>
+      <div>
+        <h3>Configuration is optional</h3>
+        <p><code>~/.rook/config.json</code> and <code>hotkeys.json</code> are written with their
+        defaults on first run, so the files document themselves. Anything you leave out keeps its
+        default.</p>
+        <div class="code">
+          <button class="copy" type="button">copy</button>
+<pre>{ "ui": {
+    "icons": "nerd",
+    "spinner": "dots",
+    "pane_borders": "auto",
+    "blink": true,
+    "mouse_capture": true,
+    "sound": { "mode": "system", "desktop": true },
+    "colors": {
+      "accent": "#7aa2f7", "blocked": "3",
+      "done": "2", "working": "6",
+      "sidebar_bg": "235", "border": "238"
+    }
+} }</pre>
+        </div>
+        <p style="margin-top:1rem">Colours are ANSI indices, 256-colour indices or hex. Status
+        colours default to low ANSI slots so they follow the theme your terminal already uses.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:2.5rem">Deliberate limits</h3>
+    <details>
+      <summary>Not in this version</summary>
+      <p>Character-accurate scrollback and drag-to-select, plugins, and per-client viewports (the
+      daemon renders one frame at the last attacher's size). Scrollback is the plain-text
+      transcript the daemon already keeps — 2000 lines, no colour — and selection is by whole
+      lines; cell-accurate styled history is a different program. See <code>future-plan.md</code>.</p>
+    </details>
+    <details>
+      <summary>No built-in git UI</summary>
+      <p><kbd>prefix</kbd> <kbd>G</kbd> opens whichever of <code>lazygit</code>, <code>gitui</code>
+      or <code>tig</code> you have, in the active workspace's directory, falling back to a shell with
+      <code>git status</code> printed. lazygit is better than anything a multiplexer would grow on
+      the side, and a pane is exactly the right place to put it.</p>
+    </details>
+    <details>
+      <summary>Mouse capture costs native selection</summary>
+      <p>While capture is on, your terminal's own text selection needs <kbd>shift</kbd>+drag — the
+      same trade tmux makes. <kbd>prefix</kbd> <kbd>m</kbd> toggles it, or set
+      <code>"mouse_capture": false</code>.</p>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>rookery — a terminal multiplexer for coding agents.</span>
+    <span>Go · Bubble Tea · NDJSON over Unix sockets</span>
+  </div>
+</footer>
+
+<script>
+  // ponytail: one listener, no per-button wiring.
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy');
+    if (!btn) return;
+    const pre = btn.parentElement.querySelector('pre');
+    try {
+      await navigator.clipboard.writeText(pre.innerText.replace(/^\$ /gm, ''));
+      btn.textContent = 'copied';
+    } catch {
+      btn.textContent = 'select it';
+    }
+    setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+  });
+</script>
+</body>
+</html>

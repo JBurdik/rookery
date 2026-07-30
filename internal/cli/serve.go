@@ -98,13 +98,13 @@ func serveForeground(sessionName string) error {
 
 	loop := state.NewLoop(sessionName, Version)
 	// The daemon reads the same config the client does, so notification
-	// sounds work whether or not anyone is attached.
-	if cfg, _, err := config.Load(); err == nil {
-		loop.SetSound(notify.New(cfg.UI.Sound))
-	} else {
+	// sounds work whether or not anyone is attached. Keep the operation as a
+	// closure too: `rook reload` can apply safe daemon settings in place.
+	if err := reloadDaemonConfig(loop); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: config: %v\n", err)
 		loop.SetSound(notify.New(notify.DefaultConfig()))
 	}
+	loop.SetReloader(func() error { return reloadDaemonConfig(loop) })
 
 	apiLn, err := apiserver.Serve(sessionName, loop)
 	if err != nil {
@@ -118,14 +118,6 @@ func serveForeground(sessionName string) error {
 	if err := session.WritePIDFile(sessionName); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
 	}
-
-	// Agent status rules: the embedded defaults, overlaid with anything in
-	// ~/.rook/agents. A broken user file costs that file, not the daemon.
-	registry, errs := agentstatus.Load(config.AgentsDir())
-	for _, err := range errs {
-		fmt.Fprintf(os.Stderr, "warning: agent manifest: %v\n", err)
-	}
-	loop.SetAgentRegistry(registry)
 
 	// Bring back the workspace/tab/split tree the last daemon had. Panes come
 	// back as shells in their old directories — see internal/state/persist.go.
@@ -143,5 +135,22 @@ func serveForeground(sessionName string) error {
 	apiLn.Close()
 	attachLn.Close()
 	session.Cleanup(sessionName)
+	return nil
+}
+
+// reloadDaemonConfig applies the configuration that belongs to the daemon.
+// Hotkeys remain client-side and are picked up on the next attach; sounds and
+// detector manifests take effect immediately.
+func reloadDaemonConfig(loop *state.Loop) error {
+	cfg, _, err := config.Load()
+	if err != nil {
+		return err
+	}
+	loop.SetSound(notify.New(cfg.UI.Sound))
+	registry, errs := agentstatus.Load(config.AgentsDir())
+	for _, manifestErr := range errs {
+		fmt.Fprintf(os.Stderr, "warning: agent manifest: %v\n", manifestErr)
+	}
+	loop.SetAgentRegistry(registry)
 	return nil
 }

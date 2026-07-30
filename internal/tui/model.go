@@ -79,12 +79,6 @@ type model struct {
 	menuX     int
 	menuY     int
 
-	// The manager bar's own state. managerReply is the last thing it said and
-	// stays on screen until it says something else; managerBusy runs the
-	// spinner between asking and being answered.
-	managerReply string
-	managerBusy  bool
-
 	// Hit-test tables, rebuilt every render so a click can be resolved
 	// against exactly what is on screen right now.
 	sidebarRows []sidebarRow
@@ -96,8 +90,17 @@ type model struct {
 	spinning bool
 
 	statusMsg string
-	fatalErr  error
+	// toast is a short-lived, bottom-row announcement. It deliberately stays
+	// separate from statusMsg so a copy confirmation never erases a useful
+	// daemon warning underneath it.
+	toast    string
+	toastID  uint64
+	fatalErr error
 }
+
+const toastDuration = 3 * time.Second
+
+type toastExpiredMsg struct{ id uint64 }
 
 func newModel(sessionName string, conn net.Conn, cfg config.Config, keys config.Hotkeys) *model {
 	return &model{
@@ -130,6 +133,18 @@ func spinnerTick() tea.Cmd {
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case copyResultMsg:
+		if msg.err != nil {
+			return m, m.showToast(copyFailedMsg(msg.err))
+		}
+		return m, m.showToast(copiedMsg(msg.text))
+
+	case toastExpiredMsg:
+		if msg.id == m.toastID {
+			m.toast = ""
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if !m.helloSent {
@@ -145,7 +160,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Borders:      m.cfg.UI.PaneBorders,
 				DoneColor:    m.cfg.UI.Colors.Done,
 				Blink:        m.cfg.UI.Blink == nil || *m.cfg.UI.Blink,
-				ManagerCmd:   m.cfg.UI.ManagerCmd,
 			})
 		} else {
 			m.send(attachproto.Resize{Type: attachproto.TypeResize, Cols: m.paneCols(), Rows: m.paneRows()})
@@ -191,6 +205,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// showToast announces a completed local action without changing layout. The
+// generation ID makes an older timer harmless when another toast replaces it.
+func (m *model) showToast(text string) tea.Cmd {
+	m.toastID++
+	m.toast = text
+	id := m.toastID
+	return tea.Tick(toastDuration, func(time.Time) tea.Msg { return toastExpiredMsg{id: id} })
 }
 
 func (m *model) sidebarWidth() int {
@@ -258,8 +281,6 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.helpMode = true
 	case config.ActionGit:
 		m.act(attachproto.ActionGit, "", "")
-	case config.ActionManager:
-		m.focusManager()
 	case config.ActionLiteralPrefix:
 		// prefix prefix sends the prefix key through, so a nested
 		// multiplexer or a readline user isn't locked out.
@@ -268,6 +289,7 @@ func (m *model) handleAction(action, key string) (tea.Model, tea.Cmd) {
 		m.act(attachproto.ActionNewTab, "", "")
 	case config.ActionNewTabNamed:
 		m.startPrompt("new tab name", attachproto.ActionNewTab, "")
+		m.promptText = strconv.Itoa(len(m.state.Tabs) + 1)
 	case config.ActionCloseTab:
 		m.act(attachproto.ActionCloseTab, m.state.ActiveTab, "")
 	case config.ActionNextTab:
@@ -397,20 +419,10 @@ func (m *model) handlePromptKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd)
 	case "esc", "ctrl+c":
 		m.promptMode, m.promptText, m.statusMsg = false, "", ""
 	case "enter":
-		asked := m.managerFocused() && m.promptText != ""
 		if m.promptText != "" {
 			m.act(m.promptAction, m.promptTarget, m.promptText)
 		}
 		m.promptMode, m.promptText, m.statusMsg = false, "", ""
-		if asked {
-			// The bar shows a spinner from here until the reply lands, so the
-			// animation clock has to be running even if nothing else is.
-			m.managerBusy, m.managerReply = true, ""
-			if !m.spinning {
-				m.spinning = true
-				return m, spinnerTick()
-			}
-		}
 	case "backspace":
 		if r := []rune(m.promptText); len(r) > 0 {
 			m.promptText = string(r[:len(r)-1])
@@ -427,18 +439,6 @@ func (m *model) handlePromptKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd)
 
 func (m *model) startPrompt(label, action, target string) {
 	m.promptMode, m.promptLabel, m.promptAction, m.promptTarget, m.promptText = true, label, action, target, ""
-}
-
-// focusManager puts the cursor in the manager bar. Reached from the prefix key
-// and from a click on the bar itself.
-func (m *model) focusManager() {
-	m.startPrompt("manager", attachproto.ActionManager, "")
-	m.statusMsg = "manager — enter asks · esc cancels"
-}
-
-// managerFocused reports whether what you type goes to the manager bar.
-func (m *model) managerFocused() bool {
-	return m.promptMode && m.promptAction == attachproto.ActionManager
 }
 
 func (m *model) move(dir string) {
@@ -513,13 +513,9 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Bottom chrome. The manager bar takes a click as "talk to me"; the status
-	// row below it is not interactive. Neither is pane content, so nothing here
-	// may fall through to the daemon's hit-testing.
-	if managerRow := headerRows + m.paneRows(); msg.Y >= managerRow {
-		if kind == "press" && msg.Y == managerRow && !m.managerFocused() {
-			m.focusManager()
-		}
+	// Bottom chrome: the status row is not interactive, and neither is pane
+	// content, so nothing here may fall through to the daemon's hit-testing.
+	if msg.Y >= headerRows+m.paneRows() {
 		return m, nil
 	}
 
@@ -543,8 +539,11 @@ func (m *model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// the daemon decides between focusing a pane, dragging a divider, and
 	// forwarding to a program that asked for mouse reporting.
 	cx, cy := msg.X-m.sidebarWidth(), msg.Y-headerRows
+	// A pane whose program asked for mouse reporting gets its right-clicks
+	// too: an agent TUI binds them, and the pane menu is still one prefix key
+	// away. Stealing them here is indistinguishable from a broken mouse.
 	if kind == "press" && button == "right" {
-		if paneID := m.paneAt(cx, cy); paneID != "" {
+		if paneID := m.paneAt(cx, cy); paneID != "" && !m.paneWantsMouse(paneID) {
 			m.openMenu(msg.X, msg.Y, paneMenu(paneID))
 			return m, nil
 		}
@@ -572,6 +571,17 @@ func (m *model) paneAt(x, y int) string {
 		}
 	}
 	return ""
+}
+
+// paneWantsMouse reports whether the program in a pane turned on terminal
+// mouse reporting, as of the last state the daemon sent.
+func (m *model) paneWantsMouse(paneID string) bool {
+	for _, p := range m.state.Panes {
+		if p.PaneID == paneID {
+			return p.MouseWanted
+		}
+	}
+	return false
 }
 
 func mouseKind(msg tea.MouseMsg) (kind, button string) {
@@ -643,11 +653,7 @@ func (m *model) handleServerMsg(msg attachproto.ServerMsg) (tea.Model, tea.Cmd) 
 			Type: msg.Type, PaneID: msg.PaneID, Cols: msg.Cols, Rows: msg.Rows,
 			ANSI: msg.ANSI, CursorX: msg.CursorX, CursorY: msg.CursorY, Revision: msg.Revision,
 		}
-	case attachproto.TypeManagerReply:
-		m.managerReply, m.managerBusy = msg.Text, false
-
 	case attachproto.TypeCopy:
-		m.statusMsg = copiedMsg(msg.Text)
 		return m, copyToClipboard(msg.Text)
 
 	case attachproto.TypeNotify:
@@ -719,7 +725,7 @@ func (m *model) View() string {
 			lines = append(lines, sidebar[i]+content[i])
 		}
 	}
-	lines = append(lines, m.renderManagerBar(), m.renderStatus())
+	lines = append(lines, m.renderStatus())
 
 	// The help floats on top of all that, so the panes, sidebar and tabs stay
 	// visible behind it.
@@ -734,15 +740,16 @@ func (m *model) View() string {
 		left, top := m.menuOrigin(box)
 		lines = m.overlayAt(lines, box, m.width, m.height, left, top)
 	}
+	if m.promptMode {
+		lines = m.overlay(lines, m.renderPromptDialog(m.width), m.width, m.height)
+	}
 
 	return strings.Join(lines, "\n")
 }
 
 func (m *model) renderStatus() string {
-	// A manager prompt draws itself in the manager bar, so the status row keeps
-	// showing whatever it was showing.
-	if m.promptMode && !m.managerFocused() {
-		return m.promptLabel + ": " + m.promptText + "▌"
+	if m.toast != "" {
+		return m.p.help.Render(m.toast)
 	}
 	if m.statusMsg != "" {
 		return m.p.help.Render(m.statusMsg)

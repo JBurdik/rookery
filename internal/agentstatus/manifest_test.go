@@ -222,6 +222,29 @@ func TestVisibleBlockerReportedOnMatch(t *testing.T) {
 	}
 }
 
+func TestVerdictIdentifiesWinningRule(t *testing.T) {
+	r := &Registry{byID: map[string]*Manifest{}}
+	if err := r.add([]byte(`{"id":"x","rules":[
+		{"id":"agent-busy","state":"working","priority":10,"region":"bottom","contains":["working"]}
+	]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.add([]byte(`{"id":"generic","rules":[
+		{"id":"shared-blocker","state":"blocked","priority":20,"region":"bottom","contains":["continue?"]}
+	]}`)); err != nil {
+		t.Fatal(err)
+	}
+	r.index()
+
+	v := r.EvaluateAgentVerdict("x", Input{Bottom: []string{"working", "continue?"}})
+	if v.State != Blocked {
+		t.Fatalf("State = %q, want blocked", v.State)
+	}
+	if got, want := v.Rule, (RuleMatch{ID: "shared-blocker", Source: "generic", Priority: 20, Region: RegionBottom}); got != want {
+		t.Errorf("Rule = %#v, want %#v", got, want)
+	}
+}
+
 func TestInvalidRegionRejected(t *testing.T) {
 	r := &Registry{byID: map[string]*Manifest{}}
 	err := r.add([]byte(`{"id":"x","rules":[

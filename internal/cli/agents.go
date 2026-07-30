@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/jirkab/rookery/internal/agentstatus"
+	"github.com/jirkab/rookery/internal/apiproto"
 	"github.com/jirkab/rookery/internal/config"
 )
 
@@ -24,6 +25,8 @@ func RunAgents(args []string) error {
 			return fmt.Errorf("usage: rook agents show <agent>")
 		}
 		return agentsShow(args[1])
+	case "explain":
+		return agentsExplain(args[1:])
 	case "init":
 		written, err := agentstatus.WriteDefaults(config.AgentsDir())
 		if err != nil {
@@ -77,12 +80,29 @@ func agentsShow(id string) error {
 	return printJSON(m)
 }
 
+// agentsExplain asks the daemon that owns the pane, rather than loading local
+// manifests again: its reply reflects the active registry and the exact live
+// screen that produced the status.
+func agentsExplain(args []string) error {
+	fs := newPaneFlags("agents explain")
+	if err := fs.parse(args); err != nil {
+		return err
+	}
+	paneID, err := fs.firstArg("agents explain")
+	if err != nil {
+		return err
+	}
+	return callAndPrint(fs.session, "debug.pane", apiproto.PaneStatusParams{PaneID: paneID})
+}
+
 func agentsUsage() {
 	fmt.Fprint(os.Stderr, `rook agents — the rules that decide what an agent is doing
 
 Usage:
   rook agents ls            list known agents, their executables and rule counts
   rook agents show <agent>  print one manifest, rules and all
+  rook agents explain <pane> [--session NAME]
+                          show the live rule and signal behind a pane's status
   rook agents init          copy the built-in manifests into ~/.rook/agents
 
 Status comes from prioritised rules matched against two things a multiplexer
