@@ -294,11 +294,12 @@ what rookery added. Verified against a copy of a real config with 26 hook
 entries across 10 events — install/uninstall round-trips byte-identical. A
 settings file it cannot parse is refused, not replaced.
 
-Codex and OpenCode are integrated too, one tier each:
+Codex, OpenCode, and Pi are integrated too:
 
 ```bash
 rook integration install codex      # session id at start, into ~/.codex/hooks.json
 rook integration install opencode   # authoritative status, via a plugin file
+rook integration install pi         # authoritative status, via a Pi extension
 ```
 
 Codex's hooks don't cover every lifecycle transition (a permission
@@ -314,6 +315,14 @@ instead of a `settings.json` merge, since OpenCode has no hooks-config format
 of its own to merge into. Reinstalling overwrites it; uninstall removes it
 only if it still carries rookery's marker, so a plugin you wrote by hand at
 the same path is left alone.
+
+Pi uses its native TypeScript extension API, installed at
+`~/.pi/agent/extensions/rook-agent-state.ts`. Pi auto-discovers that file; the
+extension is active only inside a Rook pane, reports `working` when a turn
+starts and `idle` when it settles, and records Pi's session ID or session-file
+reference. It does not edit Pi settings. Use `--project` for a project-local
+extension at `./.pi/extensions/rook-agent-state.ts`; restart Pi (or reload its
+extensions) after installation.
 
 ### Resume a recorded agent session
 
@@ -333,7 +342,7 @@ rook pane resume --agent codex --session-ref 550e8400-e29b-41d4-a716-44665544000
 rook pane resume --agent opencode --session-ref ses_abc123
 ```
 
-Only Claude, Codex, and OpenCode are accepted. Rookery runs exactly one
+Only Claude, Codex, and OpenCode are accepted for resume. Rookery runs exactly one
 documented interactive command for each (`claude --resume ID`, `codex resume
 ID`, or `opencode --session ID`); resume accepts neither a custom command nor
 extra command arguments. A source pane must have matching recorded metadata,
@@ -357,6 +366,8 @@ rook integration install claude --project            # ./.claude/settings.json
 rook integration install claude --local              # ./.claude/settings.local.json
 rook integration install claude --settings /path/to/settings.json
 rook integration install claude --all                # every config found
+rook integration install pi                           # ~/.pi/agent/extensions/rook-agent-state.ts
+rook integration install pi --project                 # ./.pi/extensions/rook-agent-state.ts
 ```
 
 `rook skill --install` takes the same flags.
@@ -374,6 +385,7 @@ rook skill              # print it
 rook skill --install    # write it into the config the agent actually loads
 rook skill --install --config-dir ~/claude-personal
 rook skill --install --all
+rook skill --install --agent pi                       # ~/.pi/agent/skills/rookery/SKILL.md
 ```
 
 An agent dropped into a pane has the CLI on its PATH and `ROOK_ENV=1` in its
@@ -396,7 +408,7 @@ rook setup
 flags to look up; `rook setup` is the same two installers behind one
 Bubble Tea wizard, for "wire up whatever agents I have" without reading
 either. It lists the agents rookery knows about (Claude Code, Codex,
-OpenCode) with what's already on `PATH` and already installed, lets you
+OpenCode, Pi) with what's already on `PATH` and already installed, lets you
 check the ones you want, shows exactly which files it's about to touch, then
 installs. Nothing it does isn't already `rook skill --install` /
 `rook integration install` under the hood — the wizard only decides which

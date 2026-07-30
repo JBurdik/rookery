@@ -34,6 +34,10 @@
   the TUI input bridge.
 - First-run setup can now configure Claude Code, Codex CLI, and OpenCode
   integrations.
+- Pi coding agent integration: `rook integration install pi` installs an
+  auto-discovered TypeScript extension that reports working/idle state and a
+  session reference. `rook skill --install --agent pi` installs Rook's skill
+  in Pi's agent directory.
 
 ### Changed
 

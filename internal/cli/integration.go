@@ -152,14 +152,20 @@ func integrationStatus(args []string) error {
 		}
 
 		dirs := candidates(spec)
+		pathsForDir := map[string]string{}
 		if target.settings != "" || target.configDir != "" || target.project || target.local {
 			dirs = nil // an explicit target means only that one matters
 			for _, p := range paths {
-				dirs = append(dirs, filepath.Dir(p))
+				dir := filepath.Dir(p)
+				dirs = append(dirs, dir)
+				pathsForDir[dir] = p
 			}
 		}
 		for _, dir := range dirs {
-			path := spec.SettingsIn(dir)
+			path := pathsForDir[dir]
+			if path == "" {
+				path = spec.SettingsIn(dir)
+			}
 			st, err := integration.StatusOf(id, path)
 			if err != nil {
 				return err
@@ -243,8 +249,8 @@ func integrationUsage() {
 
 Usage:
   rook integration status              what is installed, in every config found
-  rook integration install claude      add the hooks
-  rook integration uninstall claude    remove them
+  rook integration install claude      add the integration
+  rook integration uninstall claude    remove it
 
 Which configuration:
   (default)              the one the agent itself would load — $CLAUDE_CONFIG_DIR
@@ -280,5 +286,10 @@ The installer merges into your existing settings.json: your own hooks are kept,
 running it twice does not duplicate anything, and uninstall removes only the
 entries rookery added. A settings file it cannot parse is refused rather than
 replaced.
+
+Pi uses its native TypeScript extension API instead of JSON hooks. Installing
+Pi writes one auto-discovered extension at ~/.pi/agent/extensions/rook-agent-state.ts
+(or ./.pi/extensions with --project); it reports working/idle and its session
+reference, and leaves Pi's own settings untouched.
 `)
 }

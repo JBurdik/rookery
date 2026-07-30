@@ -89,7 +89,7 @@ _rook() {
       if (( CURRENT == 3 )); then
         _describe -t commands 'integration command' integration_commands
       else
-        _arguments '--session=[session name]:session:' '--config-dir=[configuration directory]:directory:_files -/' '--project[use project config]' '--local[use local config]' '--settings=[settings file]:file:_files' '--all[target all configs]' '1:agent:(claude codex opencode)'
+        _arguments '--session=[session name]:session:' '--config-dir=[configuration directory]:directory:_files -/' '--project[use project config]' '--local[use local config]' '--settings=[settings file]:file:_files' '--all[target all configs]' '1:agent:(claude codex opencode pi)'
       fi
       ;;
     agents)

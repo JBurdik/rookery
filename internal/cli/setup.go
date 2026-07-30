@@ -36,14 +36,14 @@ func setupUsage() {
 Usage:
   rook setup
 
-Walks through the agents rookery knows about (Claude Code, Codex, OpenCode),
+Walks through the agents rookery knows about (Claude Code, Codex, OpenCode, Pi),
 lets you pick which to set up, and installs both the rookery skill and the
 status-reporting hooks for each — the same install `+"`rook skill --install`"+`
 and `+"`rook integration install <agent>`"+` do individually, into whichever
 config each agent would actually load.
 
 Not a terminal (piped, scripted, CI)? Use the flag-driven commands directly:
-  rook skill --install [--project|--local|--config-dir DIR|--all]
-  rook integration install <claude|codex|opencode> [--project|--local|--config-dir DIR|--all]
+  rook skill --install --agent <agent> [--project|--local|--config-dir DIR|--all]
+  rook integration install <claude|codex|opencode|pi> [--project|--local|--config-dir DIR|--all]
 `)
 }

@@ -40,8 +40,16 @@ func (t *targetFlags) resolve(spec integration.Spec) ([]string, error) {
 	cwd, _ := os.Getwd()
 	switch {
 	case t.local:
+		if spec.ID == "pi" {
+			// Pi auto-discovers project extensions from .pi/extensions. It has
+			// no separate local-settings precedence like Claude does.
+			return []string{filepath.Join(cwd, ".pi", "extensions", "rook-agent-state.ts")}, nil
+		}
 		return []string{filepath.Join(cwd, spec.ConfigDirName, "settings.local.json")}, nil
 	case t.project:
+		if spec.ID == "pi" {
+			return []string{filepath.Join(cwd, ".pi", "extensions", "rook-agent-state.ts")}, nil
+		}
 		return []string{filepath.Join(cwd, spec.ConfigDirName, spec.SettingsFile)}, nil
 	case t.configDir != "":
 		return []string{spec.SettingsIn(expandHome(t.configDir))}, nil

@@ -377,6 +377,62 @@ func TestOpenCodeUninstallOnlyRemovesOurs(t *testing.T) {
 	}
 }
 
+func TestPiInstallWritesMarkedExtension(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".pi", "agent", "extensions", "rook-agent-state.ts")
+
+	st, err := Install("pi", path, "/usr/local/bin/rook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Installed || st.Hooks != 1 {
+		t.Errorf("status = %+v, want one installed extension", st)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		piMarker,
+		`const ROOK_BIN = "/usr/local/bin/rook";`,
+		`pi.on("agent_start"`,
+		`pi.on("agent_settled"`,
+		`pi.on("session_start"`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Pi extension missing %q", want)
+		}
+	}
+}
+
+func TestPiUninstallOnlyRemovesOurs(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".pi", "agent", "extensions", "rook-agent-state.ts")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("// a user's extension\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("pi", path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); err != nil {
+		t.Errorf("uninstall removed a non-rook extension: %v", err)
+	}
+
+	if _, err := Install("pi", path, "rook"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("pi", path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); !os.IsNotExist(err) {
+		t.Error("uninstall left Rook's Pi extension behind")
+	}
+}
+
 func hasCommand(entries []any, want string) bool {
 	for _, e := range entries {
 		m, ok := e.(map[string]any)

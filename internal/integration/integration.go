@@ -117,11 +117,25 @@ var opencodeSpec = Spec{
 	SettingsFile:  filepath.Join("plugin", "rook-agent-state.js"),
 }
 
+// piSpec is a global TypeScript extension. Pi intentionally exposes its
+// lifecycle through the extension API rather than a hooks JSON file; this
+// gives Rook authoritative working/idle events and a session reference without
+// scraping Pi's terminal UI.
+var piSpec = Spec{
+	ID:            "pi",
+	Name:          "Pi",
+	Description:   "authoritative working/idle status and session reference from a Pi extension",
+	ConfigEnv:     "PI_CODING_AGENT_DIR",
+	ConfigDirName: filepath.Join(".pi", "agent"),
+	SettingsFile:  filepath.Join("extensions", "rook-agent-state.ts"),
+}
+
 // Specs are the agents rookery can integrate with, by id.
 var Specs = map[string]Spec{
 	claudeSpec.ID:   claudeSpec,
 	codexSpec.ID:    codexSpec,
 	opencodeSpec.ID: opencodeSpec,
+	piSpec.ID:       piSpec,
 }
 
 // IDs lists the known integrations.
@@ -194,6 +208,9 @@ func Install(id, path, rookBin string) (Status, error) {
 	if id == "opencode" {
 		return opencodeInstall(path, rookBin)
 	}
+	if id == "pi" {
+		return piInstall(path, rookBin)
+	}
 
 	settings, err := readSettings(path)
 	if err != nil {
@@ -231,6 +248,9 @@ func Uninstall(id, path string) (Status, error) {
 	if id == "opencode" {
 		return opencodeUninstall(path)
 	}
+	if id == "pi" {
+		return piUninstall(path)
+	}
 
 	settings, err := readSettings(path)
 	if err != nil {
@@ -266,6 +286,9 @@ func StatusOf(id, path string) (Status, error) {
 	}
 	if id == "opencode" {
 		return opencodeStatus(path)
+	}
+	if id == "pi" {
+		return piStatus(path)
 	}
 	st := Status{ID: spec.ID, Name: spec.Name, Settings: path}
 
@@ -473,6 +496,11 @@ const opencodeMarker = "// rookery-integration"
 //go:embed assets/opencode-agent-state.js
 var opencodePluginAsset string
 
+const piMarker = "// rookery-pi-integration"
+
+//go:embed assets/pi-rook-agent-state.ts
+var piExtensionAsset string
+
 // opencodeInstall drops in the plugin file wholesale: unlike the JSON-hooks
 // agents there is no existing file to merge with, so reinstalling simply
 // overwrites it.
@@ -506,6 +534,43 @@ func opencodeStatus(path string) (Status, error) {
 		return st, nil
 	}
 	if strings.Contains(string(data), opencodeMarker) {
+		st.Installed = true
+		st.Hooks = 1
+	}
+	return st, nil
+}
+
+// piInstall places one auto-discovered global extension in Pi's agent
+// directory. Pi discovers ~/.pi/agent/extensions/*.ts automatically, so this
+// does not rewrite the user's settings.json or extension list.
+func piInstall(path, rookBin string) (Status, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return Status{}, err
+	}
+	content := strings.Replace(piExtensionAsset, "__ROOK_BIN__", rookBin, 1)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return Status{}, err
+	}
+	return piStatus(path)
+}
+
+func piUninstall(path string) (Status, error) {
+	if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), piMarker) {
+		if err := os.Remove(path); err != nil {
+			return Status{}, err
+		}
+	}
+	return piStatus(path)
+}
+
+func piStatus(path string) (Status, error) {
+	spec := Specs["pi"]
+	st := Status{ID: spec.ID, Name: spec.Name, Settings: path}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return st, nil
+	}
+	if strings.Contains(string(data), piMarker) {
 		st.Installed = true
 		st.Hooks = 1
 	}

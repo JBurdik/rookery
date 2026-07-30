@@ -80,7 +80,7 @@ _rook()
             if (( COMP_CWORD == 2 )); then
                 COMPREPLY=( $(compgen -W "status ls list install uninstall remove help" -- "$cur") )
             else
-                COMPREPLY=( $(compgen -W "$common_flags --config-dir --project --local --settings --all claude codex opencode --help" -- "$cur") )
+                COMPREPLY=( $(compgen -W "$common_flags --config-dir --project --local --settings --all claude codex opencode pi --help" -- "$cur") )
             fi ;;
         agents)
             COMPREPLY=( $(compgen -W "ls list show init --help" -- "$cur") ) ;;

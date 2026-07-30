@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jirkab/rookery/internal/integration"
 	"github.com/jirkab/rookery/internal/skill"
@@ -14,6 +15,7 @@ import (
 func RunSkill(args []string) error {
 	fs := newPaneFlags("skill")
 	install := fs.set.Bool("install", false, "write it into the agent's skill directory")
+	agent := fs.set.String("agent", "claude", "agent config to install into (claude | codex | opencode | pi)")
 	var target targetFlags
 	target.register(fs.set)
 	if err := fs.parse(args); err != nil {
@@ -27,7 +29,10 @@ func RunSkill(args []string) error {
 
 	// Skills live beside settings, so the same targeting applies: with several
 	// config directories, installing into the wrong one is silent.
-	spec := integration.Specs["claude"]
+	spec, ok := integration.Specs[*agent]
+	if !ok {
+		return fmt.Errorf("unknown agent %q (have: %s)", *agent, strings.Join(integration.IDs(), ", "))
+	}
 	paths, err := target.resolve(spec)
 	if err != nil {
 		return err
