@@ -12,6 +12,7 @@ import (
 	"github.com/jirkab/rookery/internal/agentstatus"
 	"github.com/jirkab/rookery/internal/apiproto"
 	"github.com/jirkab/rookery/internal/attachproto"
+	"github.com/jirkab/rookery/internal/config"
 	"github.com/jirkab/rookery/internal/icons"
 	"github.com/jirkab/rookery/internal/notify"
 	"github.com/jirkab/rookery/internal/termgrid"
@@ -113,6 +114,9 @@ type Loop struct {
 	sound   *notify.Player
 	agents  *agentstatus.Registry
 	reload  func() error
+	// agentCmd is what "start an agent here" means: config.json's agent
+	// section, or the built-in default until the daemon is told otherwise.
+	agentCmd config.Agent
 
 	// lastSnapshot is the layout as it was last written to disk, so an
 	// unchanged tree costs a marshal rather than a file write.
@@ -144,6 +148,14 @@ func (l *Loop) SetAgentRegistry(r *agentstatus.Registry) {
 	}
 }
 
+// SetDefaultAgent installs the configured default agent command. An empty
+// command is ignored, so a daemon started without config still fans out.
+func (l *Loop) SetDefaultAgent(a config.Agent) {
+	if a.Command != "" {
+		l.agentCmd = a
+	}
+}
+
 // SetReloader supplies the daemon-owned configuration reload operation. It is
 // called from the loop goroutine, which keeps sound and agent registry changes
 // serialized with every other state change.
@@ -156,6 +168,7 @@ func NewLoop(session, version string) *Loop {
 	return &Loop{
 		app:         newApp(session),
 		version:     version,
+		agentCmd:    config.Agent{Command: config.DefaultAgentCommand},
 		agents:      registry,
 		ptyMsgs:     make(chan ptyOutputMsg, 256),
 		ptyExits:    make(chan ptyExitMsg, 16),

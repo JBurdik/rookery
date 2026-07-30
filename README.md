@@ -574,6 +574,24 @@ patch. `fan promote` previews first. Its `--apply` form only fast-forwards a
 clean source branch to a clean candidate with commits, and retains every
 worktree so nothing is destroyed while you inspect the result.
 
+### Which agent runs
+
+`fan` launches `claude` unless told otherwise. Change it once, in
+`config.json`:
+
+```json
+{ "agent": { "command": "codex", "args": ["--full-auto"] } }
+```
+
+`command` is the program and `args` are flags it always gets. They are kept
+apart rather than as one string so there are no quoting rules to get wrong; a
+`command` with a space in it is rejected at load with a message pointing at
+`args`, instead of failing later as a mysterious "not found". An omitted or
+empty `command` means `claude`, so an existing config keeps working.
+
+`rook fan --cmd CMD` still wins for a single run, and it overrides the whole
+section — flags meant for one agent are not handed to another.
+
 The prompt is **queued**, not typed immediately. An agent that has not finished
 starting loses whatever you send it, which is how a fan-out of five quietly
 becomes a fan-out of two; the queue drains one message per agent per idle turn.

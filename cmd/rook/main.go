@@ -146,7 +146,8 @@ Mouse is on by default: click a pane, tab, workspace or agent, drag a divider.
 Shift+drag for your terminal's own text selection.
 
 Config lives in ~/.rook/config.json and ~/.rook/hotkeys.json; every binding
-above is remappable, prefix included.
+above is remappable, prefix included. The agent a fan-out launches is
+config.json's "agent": {"command": "claude", "args": []}.
 
 Session defaults to $ROOK_SESSION, else "default". Panes get ROOK_SESSION,
 ROOK_PANE, ROOK_TAB, ROOK_WORKSPACE and ROOK_ENV=1 in their environment, so an

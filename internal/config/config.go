@@ -6,9 +6,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/jirkab/rookery/internal/icons"
 	"github.com/jirkab/rookery/internal/notify"
@@ -36,6 +38,43 @@ func AgentsDir() string { return filepath.Join(Dir(), "agents") }
 // Config is ~/.rook/config.json.
 type Config struct {
 	UI UI `json:"ui"`
+	// Agent is what rookery launches when it needs an agent rather than a
+	// shell — a fan-out, or anything else that says "start an agent here".
+	Agent Agent `json:"agent"`
+}
+
+// DefaultAgentCommand is what rookery runs when nothing else is configured.
+// Changing it changes nothing for a user who already has a config.json: the
+// file was written with the value in it on first run.
+const DefaultAgentCommand = "claude"
+
+// Agent is the default agent command. Command is the program, Args are the
+// flags it always gets — kept apart rather than as one string because a
+// command line has quoting rules and this way there are none to get wrong.
+type Agent struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// Argv is the command line to exec: program first, then its arguments.
+func (a Agent) Argv() []string { return append([]string{a.Command}, a.Args...) }
+
+// normalize trims the command and fills in the default. It rejects a command
+// with spaces in it: "claude --resume" as a Command would be looked up as a
+// program of that name and fail with a confusing "not found", so say what to
+// do instead.
+func (a Agent) normalize() (Agent, error) {
+	a.Command = strings.TrimSpace(a.Command)
+	if a.Command == "" {
+		a.Command = DefaultAgentCommand
+	}
+	if strings.ContainsAny(a.Command, " \t") {
+		return a, fmt.Errorf("agent.command %q must be a single program; put flags in agent.args", a.Command)
+	}
+	for i, arg := range a.Args {
+		a.Args[i] = strings.TrimSpace(arg)
+	}
+	return a, nil
 }
 
 type UI struct {
@@ -135,7 +174,7 @@ func DefaultConfig() Config {
 		Blink:                 boolPtr(true),
 		Colors:                DefaultColors(),
 		Sound:                 notify.DefaultConfig(),
-	}}
+	}, Agent: Agent{Command: DefaultAgentCommand}}
 }
 
 // DefaultHotkeys is Herdr's default keymap, minus the features rookery does
@@ -219,6 +258,11 @@ func Load() (Config, Hotkeys, error) {
 	if cfg.UI.Sound.MinIntervalMS == 0 {
 		cfg.UI.Sound.MinIntervalMS = notify.DefaultConfig().MinIntervalMS
 	}
+	agent, err := cfg.Agent.normalize()
+	if err != nil {
+		return cfg, keys, err
+	}
+	cfg.Agent = agent
 	if keys.Prefix == "" {
 		keys.Prefix = "ctrl+b"
 	}

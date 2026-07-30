@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jirkab/rookery/internal/apiproto"
+	"github.com/jirkab/rookery/internal/config"
 	"github.com/jirkab/rookery/internal/session"
 	"github.com/jirkab/rookery/internal/worktree"
 )
@@ -32,9 +33,9 @@ func (l *Loop) fanStart(id string, p apiproto.FanStartParams) apiproto.Response 
 		// almost certainly a typo, and each one is a real process.
 		return errResp(id, apiproto.ErrInvalidParams, "at most 12 agents per fan")
 	}
-	cmd := p.Cmd
+	cmd, args := resolveAgent(l.agentCmd, p.Cmd, p.Args)
 	if cmd == "" {
-		cmd = "claude"
+		return errResp(id, apiproto.ErrInvalidParams, "no agent command configured; set agent.command in config.json or pass --cmd")
 	}
 
 	w := l.app.activeWorkspace()
@@ -82,7 +83,7 @@ func (l *Loop) fanStart(id string, p apiproto.FanStartParams) apiproto.Response 
 		w.addTab(label)
 		resp := l.paneCreate("fan", apiproto.PaneCreateParams{
 			Cmd:     cmd,
-			Args:    p.Args,
+			Args:    args,
 			Cwd:     cwd,
 			Label:   label,
 			NoFocus: true,
@@ -120,6 +121,19 @@ func (l *Loop) fanStart(id string, p apiproto.FanStartParams) apiproto.Response 
 	l.app.dirty = true
 	l.broadcastState()
 	return ok(id, result)
+}
+
+// resolveAgent decides what to launch. An explicit cmd overrides the
+// configured default entirely — its own args go with it, rather than
+// inheriting flags meant for a different agent.
+func resolveAgent(def config.Agent, cmd string, args []string) (string, []string) {
+	if cmd = strings.TrimSpace(cmd); cmd != "" {
+		return cmd, args
+	}
+	if len(args) > 0 {
+		return def.Command, args
+	}
+	return def.Command, def.Args
 }
 
 // fanList reports every pane in a fan, with what its agent is doing and what

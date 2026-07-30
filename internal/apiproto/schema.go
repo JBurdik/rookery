@@ -298,7 +298,7 @@ type WatchParams struct {
 type FanStartParams struct {
 	Prompt string   `json:"prompt"`
 	Agents int      `json:"agents,omitempty"` // default 3
-	Cmd    string   `json:"cmd,omitempty"`    // default "claude"
+	Cmd    string   `json:"cmd,omitempty"`    // default: config.json's agent.command
 	Args   []string `json:"args,omitempty"`
 	Name   string   `json:"name,omitempty"`
 	// Worktree gives each agent its own git checkout and branch, so they

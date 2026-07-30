@@ -40,7 +40,7 @@ func RunFan(args []string) error {
 func fanStart(args []string) error {
 	fs := newPaneFlags("fan")
 	agents := fs.set.Int("agents", 3, "how many agents to run")
-	cmd := fs.set.String("cmd", "", "agent to run (default: claude)")
+	cmd := fs.set.String("cmd", "", "agent to run (default: agent.command from config.json)")
 	name := fs.set.String("name", "", "name for this run (default: fan1, fan2, …)")
 	base := fs.set.String("base", "", "commit-ish the branches start from (default: HEAD)")
 	noWorktree := fs.set.Bool("no-worktree", false, "share the current directory instead of one checkout each")
@@ -242,7 +242,8 @@ Usage:
 
 Flags for a run:
   --agents N       how many agents (default 3)
-  --cmd CMD        which agent to run (default claude)
+  --cmd CMD        which agent to run; overrides config.json's agent section
+                   (default: agent.command, itself defaulting to claude)
   --base REF       commit-ish the branches start from (default HEAD)
   --no-worktree    share the current directory instead of one checkout each
 
