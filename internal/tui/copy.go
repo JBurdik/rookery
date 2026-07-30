@@ -54,6 +54,10 @@ func (m *model) handleCopyKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		m.scroll("down")
 	case "k", "up":
 		m.scroll("up")
+	case "h", "left":
+		m.scroll("left")
+	case "l", "right":
+		m.scroll("right")
 	case "ctrl+d", "pgdown", "f":
 		m.scroll("page_down")
 	case "ctrl+u", "pgup", "b":
@@ -88,9 +92,9 @@ func (m *model) scroll(what string) {
 // bindings are written down at the moment you need them.
 func (m *model) copyHint() string {
 	if m.selecting {
-		return "copy — j/k move · y copy selection · v clear · esc exit"
+		return "copy — h/l j/k select · y copy · v clear · esc exit"
 	}
-	return "copy — j/k g/G move · v start selection · y copy line · esc exit"
+	return "copy — h/l j/k g/G move · v select · y copy · esc exit"
 }
 
 // copyToClipboard writes an OSC 52 sequence past the renderer, the same way

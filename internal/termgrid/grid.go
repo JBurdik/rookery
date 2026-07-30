@@ -23,8 +23,8 @@ import (
 	"github.com/hinshun/vt10x"
 )
 
-// Grid maintains the live screen + a plain-text scrollback transcript for
-// one pane, fed by raw PTY output bytes.
+// Grid maintains the live screen, a cell-accurate scrollback, and the legacy
+// plain-text transcript for one pane, fed by raw PTY output bytes.
 type Grid struct {
 	mu    sync.Mutex
 	term  vt10x.Terminal
@@ -33,6 +33,13 @@ type Grid struct {
 	scroll    []string        // completed lines, oldest first
 	pending   strings.Builder // current (not yet newline-terminated) line
 	maxScroll int
+
+	// history contains physical terminal rows pushed off the top of the
+	// primary screen. Unlike scroll, it retains every cell attribute and the
+	// soft-wrap boundary. screenWrap follows the currently visible rows so a
+	// later scroll can retain that boundary too.
+	history    []ScrollbackLine
+	screenWrap []bool
 
 	// escTail holds an escape sequence split across two PTY reads — see
 	// faint.go.
@@ -44,8 +51,9 @@ const defaultScrollbackLines = 2000
 // New creates a grid sized cols x rows.
 func New(cols, rows int) *Grid {
 	return &Grid{
-		term:      vt10x.New(vt10x.WithSize(cols, rows)),
-		maxScroll: defaultScrollbackLines,
+		term:       vt10x.New(vt10x.WithSize(cols, rows)),
+		maxScroll:  defaultScrollbackLines,
+		screenWrap: make([]bool, max(rows, 0)),
 	}
 }
 
@@ -61,7 +69,33 @@ func (g *Grid) Write(p []byte) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	p = g.rewriteFaint(p)
-	g.term.Write(p)
+	// vt10x exposes the resulting screen but not its scroll callback. Feed it
+	// one rune at a time so a before/after screen comparison can retain the
+	// exact row whenever its full-screen scroll region advances.
+	for _, r := range string(p) {
+		beforeCursor := g.term.Cursor()
+		cols, rows := g.term.Size()
+		var before [][]Cell
+		// A normal terminal scroll can only happen when the cursor is at the
+		// bottom. Avoid copying the whole screen for the overwhelmingly common
+		// non-scrolling character write.
+		if beforeCursor.Y == rows-1 {
+			before = g.screenCells()
+		}
+		g.term.Write([]byte(string(r)))
+		afterCursor := g.term.Cursor()
+		wrapped := cols > 0 && beforeCursor.X == cols-1 && afterCursor.Y != beforeCursor.Y && afterCursor.X != beforeCursor.X
+		if len(before) > 0 && g.screenScrolled(before) {
+			g.appendHistory(before[0], g.screenWrapAt(0) || (wrapped && beforeCursor.Y == len(before)-1))
+			copy(g.screenWrap, g.screenWrap[1:])
+			if len(g.screenWrap) > 0 {
+				g.screenWrap[len(g.screenWrap)-1] = false
+			}
+		}
+		if wrapped && beforeCursor.Y >= 0 && beforeCursor.Y < len(g.screenWrap) {
+			g.screenWrap[beforeCursor.Y] = true
+		}
+	}
 	g.appendTranscript(p)
 	g.dirty = true
 }
@@ -89,6 +123,7 @@ func (g *Grid) Resize(cols, rows int) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.term.Resize(cols, rows)
+	g.screenWrap = make([]bool, rows)
 	g.dirty = true
 }
 
@@ -253,6 +288,96 @@ func (g *Grid) ScrollbackLines() []string {
 		out = append(out, g.pending.String())
 	}
 	return out
+}
+
+// ScrollbackLine is one physical terminal row. Cells are always retained at
+// their original column coordinates; Wrapped distinguishes a soft terminal
+// wrap from a newline after the row.
+type ScrollbackLine struct {
+	Cells   []Cell
+	Wrapped bool
+}
+
+// ScrollbackCells returns retained rows followed by the current primary
+// screen. It is intended for an interactive viewport; Scrollback and
+// ScrollbackLines remain the compatible plain transcript APIs.
+func (g *Grid) ScrollbackCells() []ScrollbackLine {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	out := make([]ScrollbackLine, 0, len(g.history)+len(g.screenWrap))
+	for _, line := range g.history {
+		out = append(out, cloneScrollbackLine(line))
+	}
+	for y, row := range g.screenCells() {
+		out = append(out, ScrollbackLine{Cells: row, Wrapped: g.screenWrapAt(y)})
+	}
+	// The empty row below a newline is the live cursor landing pad, not a
+	// transcript row. Keep meaningful blank rows once they have scrolled into
+	// history, but do not make entering copy mode select this trailing space.
+	for len(out) > len(g.history) && scrollbackBlank(out[len(out)-1]) {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+func scrollbackBlank(line ScrollbackLine) bool {
+	for _, cell := range line.Cells {
+		if cell.Char != 0 && cell.Char != ' ' {
+			return false
+		}
+		if cell.FG != DefaultFG || cell.BG != DefaultBG || cell.Mode != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneScrollbackLine(line ScrollbackLine) ScrollbackLine {
+	line.Cells = append([]Cell(nil), line.Cells...)
+	return line
+}
+
+func (g *Grid) appendHistory(cells []Cell, wrapped bool) {
+	g.history = append(g.history, ScrollbackLine{Cells: append([]Cell(nil), cells...), Wrapped: wrapped})
+	if len(g.history) > g.maxScroll {
+		g.history = g.history[len(g.history)-g.maxScroll:]
+	}
+}
+
+func (g *Grid) screenWrapAt(y int) bool {
+	return y >= 0 && y < len(g.screenWrap) && g.screenWrap[y]
+}
+
+func (g *Grid) screenCells() [][]Cell {
+	cols, rows := g.term.Size()
+	out := make([][]Cell, rows)
+	for y := range rows {
+		out[y] = make([]Cell, cols)
+		for x := range cols {
+			src := g.term.Cell(x, y)
+			out[y][x] = Cell{Char: src.Char, FG: Color(src.FG), BG: Color(src.BG), Mode: src.Mode}
+		}
+	}
+	return out
+}
+
+// screenScrolled identifies an upward scroll of the whole primary screen.
+// Scroll regions are deliberately excluded: those are application-local
+// redraw operations, not rows that left terminal scrollback.
+func (g *Grid) screenScrolled(before [][]Cell) bool {
+	after := g.screenCells()
+	if len(before) < 2 || len(before) != len(after) {
+		return false
+	}
+	for y := 0; y < len(before)-1; y++ {
+		if !slices.Equal(before[y+1], after[y]) {
+			return false
+		}
+	}
+	// No visual change is not a scroll (for example an SGR sequence). A
+	// blank row scrolled off a completely blank screen is immaterial.
+	return !slices.Equal(before[len(before)-1], after[len(after)-1])
 }
 
 // Size returns the current grid dimensions.

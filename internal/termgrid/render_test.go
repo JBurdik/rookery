@@ -76,3 +76,24 @@ func TestScrollbackTranscript(t *testing.T) {
 		t.Errorf("Scrollback(1) = %q truncated=%v, want only the last line", text, truncated)
 	}
 }
+
+func TestScrollbackCellsRetainStyleAndSoftWrap(t *testing.T) {
+	g := New(4, 2)
+	// The fifth character wraps the first row; the subsequent newline scrolls
+	// that styled physical row into retained history.
+	g.Write([]byte("\x1b[31mabcde\x1b[0m\r\nnext\r\n"))
+	lines := g.ScrollbackCells()
+	if len(lines) == 0 {
+		t.Fatal("no cell scrollback retained")
+	}
+	line := lines[0]
+	if got := string([]rune{line.Cells[0].Char, line.Cells[1].Char, line.Cells[2].Char, line.Cells[3].Char}); got != "abcd" {
+		t.Errorf("first retained cells = %q, want abcd", got)
+	}
+	if !line.Wrapped {
+		t.Error("first retained row lost its soft-wrap boundary")
+	}
+	if line.Cells[0].FG != Color(1) {
+		t.Errorf("first retained cell foreground = %d, want red (1)", line.Cells[0].FG)
+	}
+}
