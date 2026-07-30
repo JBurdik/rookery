@@ -1,14 +1,52 @@
-# rookery
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/graph.svg?title=rookery&subtitle=A+terminal+workspace+where+coding+agents+can+work+together&logo=gnubash&theme=violet&mode=dark&width=900&height=220" />
+    <img alt="rookery — a terminal workspace where coding agents can work together" src="https://shieldcn.dev/header/graph.svg?title=rookery&subtitle=A+terminal+workspace+where+coding+agents+can+work+together&logo=gnubash&theme=violet&mode=light&width=900&height=220" />
+  </picture>
+</p>
 
-A terminal multiplexer for coding agents. A detachable daemon keeps PTYs
-alive, a Bubble Tea client attaches and detaches at will, and agents drive the
-whole thing over a JSON-RPC Unix socket — spawning each other, watching each
-other's status, and blocking until each other's work is done.
+<p align="center">
+  <a href="https://github.com/jirkab/rookery/stargazers"><img alt="GitHub stars" src="https://shieldcn.dev/github/stars/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
+  <a href="https://github.com/jirkab/rookery/commits/main"><img alt="Last commit" src="https://shieldcn.dev/github/last-commit/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
+  <a href="https://github.com/jirkab/rookery/issues"><img alt="Open issues" src="https://shieldcn.dev/github/issues/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
+</p>
 
-```
+<p align="center"><strong>One durable home for the agents doing the work.</strong></p>
+
+Rookery is a terminal multiplexer for coding agents. A detachable daemon keeps
+PTYs alive; a Bubble Tea client attaches and detaches at will; agents coordinate
+over a JSON-RPC Unix socket to spawn peers, follow status, and wait for results.
+
+```bash
 go build -o rook ./cmd/rook
-./rook                # attach to the default session (starts the daemon if needed)
+./rook                         # attach to the default session (starts the daemon if needed)
 ```
+
+**What you get:** durable sessions, multi-client attach, shared pane layouts,
+agent-aware status and attention cues, safe queued input, remote SSH attach,
+and worktree-backed fan-out — all without exposing a network socket.
+
+## Start here
+
+```bash
+just install                   # install rook and restart a stale daemon
+rook setup                     # connect your coding agent
+rook                            # open the default session
+```
+
+Use `ctrl+b` then `?` in the TUI for the key map. The sections below explain
+the design decisions and every command in detail.
+
+## Contents
+
+- [Remote attach](#remote-attach)
+- [Several clients at once](#several-clients-at-once)
+- [Installing it](#installing-it)
+- [The model](#the-model)
+- [Fan-out](#fan-out)
+- [Sessions](#sessions)
+- [Agents](#agents)
+- [How it fits together](#how-it-fits-together)
 
 ## Remote attach
 
