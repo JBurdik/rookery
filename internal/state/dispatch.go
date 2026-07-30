@@ -1136,7 +1136,7 @@ func (l *Loop) handleMouse(m attachproto.Mouse) {
 	// Programs that turned on mouse reporting own the mouse inside their own
 	// pane: an agent's TUI has clickable things of its own, and swallowing
 	// those clicks to move focus would break it.
-	if pane.Grid.MouseEnabled() {
+	if pane.wantsMouse() {
 		if m.Kind == "press" {
 			l.app.mousePane = paneID
 			if paneID != l.app.focusedPane() {

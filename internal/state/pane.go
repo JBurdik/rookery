@@ -93,6 +93,15 @@ func (p *Pane) agentStatus() agentstatus.State {
 	}
 }
 
+// wantsMouse only grants the pane terminal mouse reports while its foreground
+// program is not a shell. Full-screen programs such as Claude and editors set
+// DEC mouse modes; if one exits without resetting them, the emulator retains
+// that mode while the shell prompt returns. Treating that stale state as a
+// shell feature would write raw CSI mouse reports into the prompt.
+func (p *Pane) wantsMouse() bool {
+	return p.Grid.MouseEnabled() && !isShell(p.Running, p.Cmd)
+}
+
 func (p *Pane) toInfo() apiproto.PaneInfo {
 	cols, rows := p.Grid.Size()
 	info := apiproto.PaneInfo{

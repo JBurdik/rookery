@@ -67,3 +67,39 @@ func TestInputBridgeHandlesSplitKittySequence(t *testing.T) {
 		t.Fatalf("sent %d enhanced messages, want 1", len(got))
 	}
 }
+
+func TestInputBridgeConsumesSGRMouseReports(t *testing.T) {
+	var got []tea.Msg
+	b := newInputBridge(nil, func(msg tea.Msg) { got = append(got, msg) })
+	if out := b.process([]byte("x\x1b[<0;70;58My")); string(out) != "xy" {
+		t.Fatalf("process output = %q, want mouse bytes removed", out)
+	}
+	if len(got) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(got))
+	}
+	mouse, ok := got[0].(tea.MouseMsg)
+	if !ok {
+		t.Fatalf("message type = %T, want tea.MouseMsg", got[0])
+	}
+	if mouse.X != 69 || mouse.Y != 57 || mouse.Button != tea.MouseButtonLeft || mouse.Action != tea.MouseActionPress {
+		t.Fatalf("mouse = %#v", mouse)
+	}
+}
+
+func TestInputBridgeHandlesSplitSGRMouseReport(t *testing.T) {
+	var got []tea.Msg
+	b := newInputBridge(nil, func(msg tea.Msg) { got = append(got, msg) })
+	if out := b.process([]byte("\x1b[<64;7;")); len(out) != 0 {
+		t.Fatalf("first process output = %q", out)
+	}
+	if out := b.process([]byte("9M")); len(out) != 0 {
+		t.Fatalf("second process output = %q", out)
+	}
+	if len(got) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(got))
+	}
+	mouse := got[0].(tea.MouseMsg)
+	if mouse.X != 6 || mouse.Y != 8 || mouse.Button != tea.MouseButtonWheelUp || mouse.Action != tea.MouseActionPress {
+		t.Fatalf("mouse = %#v", mouse)
+	}
+}

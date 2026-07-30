@@ -54,7 +54,7 @@ func (l *Loop) buildState() attachproto.State {
 		}
 		sum := pane.toSummary()
 		sum.X, sum.Y, sum.W, sum.H = r.X, r.Y, r.W, r.H
-		sum.MouseWanted = pane.Grid.MouseEnabled()
+		sum.MouseWanted = pane.wantsMouse()
 		s.Panes = append(s.Panes, sum)
 	}
 

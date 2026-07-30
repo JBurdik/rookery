@@ -82,6 +82,16 @@ func (b *inputBridge) process(p []byte) []byte {
 		seq := b.pending[:end+1]
 		b.pending = b.pending[end+1:]
 
+		// The bridge owns CSI framing so it can recognise Kitty keys split
+		// across reads. That also means SGR mouse reports must be decoded here:
+		// passing them to Bubble Tea afterwards can turn a split report into
+		// ordinary key bytes, which the focused pane then renders literally.
+		if mouse, ok := parseSGRMouse(seq); ok {
+			if b.send != nil {
+				b.send(mouse)
+			}
+			continue
+		}
 		if msg, release, ok := parseEnhancedKey(seq); ok {
 			if !release && b.send != nil {
 				b.send(msg)
@@ -94,6 +104,53 @@ func (b *inputBridge) process(p []byte) []byte {
 		out = append(out, seq...)
 	}
 	return out
+}
+
+// parseSGRMouse decodes the terminal's CSI <button;column;row M/m form.
+// Keeping it here prevents raw mouse bytes from entering Bubble Tea's normal
+// key path after the bridge has buffered a split CSI sequence.
+func parseSGRMouse(seq []byte) (tea.MouseMsg, bool) {
+	if len(seq) < 7 || !bytes.HasPrefix(seq, []byte("\x1b[<")) {
+		return tea.MouseMsg{}, false
+	}
+	final := seq[len(seq)-1]
+	if final != 'M' && final != 'm' {
+		return tea.MouseMsg{}, false
+	}
+	fields := bytes.Split(seq[3:len(seq)-1], []byte(";"))
+	if len(fields) != 3 {
+		return tea.MouseMsg{}, false
+	}
+	values := [3]int{}
+	for i, field := range fields {
+		value, err := strconv.Atoi(string(field))
+		if err != nil || value < 0 {
+			return tea.MouseMsg{}, false
+		}
+		values[i] = value
+	}
+
+	code := values[0]
+	mouse := tea.MouseMsg{X: values[1] - 1, Y: values[2] - 1}
+	mouse.Shift = code&4 != 0
+	mouse.Alt = code&8 != 0
+	mouse.Ctrl = code&16 != 0
+	button := code & 3
+	switch {
+	case code&64 != 0:
+		mouse.Button = tea.MouseButtonWheelUp + tea.MouseButton(button)
+		mouse.Action = tea.MouseActionPress
+	case code&32 != 0:
+		mouse.Button = tea.MouseButtonLeft + tea.MouseButton(button)
+		mouse.Action = tea.MouseActionMotion
+	case final == 'm' || button == 3:
+		mouse.Button = tea.MouseButtonNone
+		mouse.Action = tea.MouseActionRelease
+	default:
+		mouse.Button = tea.MouseButtonLeft + tea.MouseButton(button)
+		mouse.Action = tea.MouseActionPress
+	}
+	return mouse, true
 }
 
 func parseEnhancedKey(seq []byte) (msg enhancedKeyMsg, release bool, ok bool) {
