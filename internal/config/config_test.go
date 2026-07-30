@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +102,74 @@ func TestMalformedConfigIsReported(t *testing.T) {
 	}
 	if _, _, err := Load(); err == nil {
 		t.Error("Load accepted malformed JSON")
+	}
+}
+
+func TestAgentDefaults(t *testing.T) {
+	t.Setenv("ROOK_CONFIG_DIR", t.TempDir())
+
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Agent.Command != "claude" {
+		t.Errorf("agent.command = %q, want claude", cfg.Agent.Command)
+	}
+	if got := cfg.Agent.Argv(); !slices.Equal(got, []string{"claude"}) {
+		t.Errorf("Argv() = %v, want [claude]", got)
+	}
+}
+
+func TestAgentConfigured(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ROOK_CONFIG_DIR", dir)
+	writeConfig(t, dir, `{"agent":{"command":"  codex  ","args":["--full-auto"]}}`)
+
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Agent.Argv(); !slices.Equal(got, []string{"codex", "--full-auto"}) {
+		t.Errorf("Argv() = %v, want [codex --full-auto]", got)
+	}
+}
+
+// An older config.json has no agent section at all; it must keep working
+// rather than starting a fan-out with an empty command.
+func TestAgentMissingSectionFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ROOK_CONFIG_DIR", dir)
+	writeConfig(t, dir, `{"ui":{"sidebar_width":30}}`)
+
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Agent.Command != DefaultAgentCommand {
+		t.Errorf("agent.command = %q, want %q", cfg.Agent.Command, DefaultAgentCommand)
+	}
+	if cfg.UI.SidebarWidth != 30 {
+		t.Errorf("sidebar_width = %d, want the value from the file", cfg.UI.SidebarWidth)
+	}
+}
+
+// A command line in "command" would be looked up as a program of that name.
+// Say what to do instead rather than failing later at exec time.
+func TestAgentCommandWithFlagsRejected(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ROOK_CONFIG_DIR", dir)
+	writeConfig(t, dir, `{"agent":{"command":"claude --resume"}}`)
+
+	if _, _, err := Load(); err == nil {
+		t.Fatal("Load accepted a command with flags in it")
+	} else if !strings.Contains(err.Error(), "agent.args") {
+		t.Errorf("error = %v, want it to point at agent.args", err)
+	}
+}
+
+func writeConfig(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

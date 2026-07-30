@@ -147,6 +147,7 @@ func reloadDaemonConfig(loop *state.Loop) error {
 		return err
 	}
 	loop.SetSound(notify.New(cfg.UI.Sound))
+	loop.SetDefaultAgent(cfg.Agent)
 	registry, errs := agentstatus.Load(config.AgentsDir())
 	for _, manifestErr := range errs {
 		fmt.Fprintf(os.Stderr, "warning: agent manifest: %v\n", manifestErr)
