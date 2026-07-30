@@ -3,22 +3,16 @@ package state
 import (
 	"strconv"
 	"strings"
+
+	"github.com/jirkab/rookery/internal/termgrid"
 )
 
 // Scroll / copy mode.
 //
-// A pane's grid keeps the live screen and a plain-text transcript of
-// everything it printed. Agents can already read that transcript over the
-// API (`rook pane read --scrollback`); this is the same thing for the human:
-// a viewport onto the transcript, drawn in place of the live screen, with a
-// line-granular selection that can be yanked to the system clipboard.
-//
-// ponytail: the transcript is plain text, so scrollback is drawn without
-// colour and long lines are cut at the pane's width rather than wrapped. The
-// live screen is the styled one and is a keypress away. Selection is by whole
-// lines — character selection needs a cell-accurate history, which the
-// emulator does not keep. The copied text is the untruncated line, so cutting
-// the display costs nothing on the way out.
+// A pane's grid retains physical terminal rows as styled cells. The legacy
+// transcript remains available to the API; this viewport instead uses those
+// cells so scrollback looks like the terminal did and selections have stable
+// row/column coordinates, including soft wraps.
 type scrollView struct {
 	active bool
 	// cursor is the transcript line the cursor sits on, top the first line
@@ -27,9 +21,11 @@ type scrollView struct {
 	// point everything shifts by one. Every use clamps, so the worst case is
 	// the view sliding a line rather than pointing off the end.
 	cursor int
+	column int
 	top    int
 	// anchor is where a selection started, or -1 when nothing is selected.
-	anchor int
+	anchor       int
+	anchorColumn int
 }
 
 // wheelLines is how far one notch of the wheel moves, matching what a
@@ -46,13 +42,36 @@ func (v scrollView) selection() (from, to int) {
 	return from, to
 }
 
+func (v scrollView) selected(line, column int) bool {
+	if v.anchor < 0 {
+		return false
+	}
+	startLine, startColumn, endLine, endColumn := v.anchor, v.anchorColumn, v.cursor, v.column
+	if startLine > endLine || startLine == endLine && startColumn > endColumn {
+		startLine, startColumn, endLine, endColumn = endLine, endColumn, startLine, startColumn
+	}
+	if line < startLine || line > endLine {
+		return false
+	}
+	if startLine == endLine {
+		return column >= startColumn && column <= endColumn
+	}
+	if line == startLine {
+		return column >= startColumn
+	}
+	if line == endLine {
+		return column <= endColumn
+	}
+	return true
+}
+
 // enterScroll puts a pane into scroll mode with the cursor on the last line,
 // which is where the eye already is.
 func (l *Loop) enterScroll(pane *Pane) {
 	if pane == nil || pane.View.active {
 		return
 	}
-	lines := len(pane.Grid.ScrollbackLines())
+	lines := len(pane.Grid.ScrollbackCells())
 	_, rows := pane.Grid.Size()
 	pane.View = scrollView{
 		active: true,
@@ -88,7 +107,7 @@ func (l *Loop) scrollBy(pane *Pane, delta int) {
 		l.enterScroll(pane)
 	}
 
-	lines := len(pane.Grid.ScrollbackLines())
+	lines := len(pane.Grid.ScrollbackCells())
 	_, rows := pane.Grid.Size()
 	if lines == 0 {
 		l.exitScroll(pane)
@@ -102,6 +121,7 @@ func (l *Loop) scrollBy(pane *Pane, delta int) {
 		return
 	}
 	pane.View.cursor = min(max(next, 0), lines-1)
+	pane.View.column = min(pane.View.column, scrollLineWidth(pane, pane.View.cursor)-1)
 	pane.View.top = clampTop(pane.View.top, pane.View.cursor, lines, rows)
 	l.app.dirty = true
 }
@@ -114,7 +134,7 @@ func (l *Loop) scrollTo(pane *Pane, where string) {
 	if !pane.View.active {
 		l.enterScroll(pane)
 	}
-	lines := len(pane.Grid.ScrollbackLines())
+	lines := len(pane.Grid.ScrollbackCells())
 	_, rows := pane.Grid.Size()
 	if lines == 0 {
 		return
@@ -124,6 +144,7 @@ func (l *Loop) scrollTo(pane *Pane, where string) {
 	} else {
 		pane.View.cursor = lines - 1
 	}
+	pane.View.column = min(pane.View.column, scrollLineWidth(pane, pane.View.cursor)-1)
 	pane.View.top = clampTop(pane.View.top, pane.View.cursor, lines, rows)
 	l.app.dirty = true
 }
@@ -136,8 +157,10 @@ func (l *Loop) toggleSelect(pane *Pane) {
 	}
 	if pane.View.anchor >= 0 {
 		pane.View.anchor = -1
+		pane.View.anchorColumn = 0
 	} else {
 		pane.View.anchor = pane.View.cursor
+		pane.View.anchorColumn = pane.View.column
 	}
 	l.app.dirty = true
 	l.broadcastState()
@@ -151,15 +174,66 @@ func (l *Loop) copySelection(pane *Pane) string {
 	if pane == nil || !pane.View.active {
 		return ""
 	}
-	lines := pane.Grid.ScrollbackLines()
-	from, to := pane.View.selection()
-	from, to = min(max(from, 0), max(len(lines)-1, 0)), min(max(to, 0), max(len(lines)-1, 0))
+	lines := pane.Grid.ScrollbackCells()
 	if len(lines) == 0 {
 		return ""
 	}
-	text := strings.Join(lines[from:to+1], "\n")
+	from, to := pane.View.selection()
+	from, to = min(max(from, 0), len(lines)-1), min(max(to, 0), len(lines)-1)
+	if pane.View.anchor < 0 {
+		text := scrollText(lines[from].Cells, 0, len(lines[from].Cells)-1)
+		l.exitScroll(pane)
+		return text
+	}
+	text := copyCells(lines, pane.View.anchor, pane.View.anchorColumn, pane.View.cursor, pane.View.column)
 	l.exitScroll(pane)
 	return text
+}
+
+func scrollLineWidth(pane *Pane, line int) int {
+	lines := pane.Grid.ScrollbackCells()
+	if line < 0 || line >= len(lines) || len(lines[line].Cells) == 0 {
+		return 1
+	}
+	return len(lines[line].Cells)
+}
+
+func scrollText(cells []termgrid.Cell, from, to int) string {
+	if len(cells) == 0 || to < from {
+		return ""
+	}
+	from, to = max(from, 0), min(to, len(cells)-1)
+	runes := make([]rune, 0, to-from+1)
+	for _, cell := range cells[from : to+1] {
+		ch := cell.Char
+		if ch == 0 {
+			ch = ' '
+		}
+		runes = append(runes, ch)
+	}
+	return strings.TrimRight(string(runes), " ")
+}
+
+func copyCells(lines []termgrid.ScrollbackLine, startLine, startColumn, endLine, endColumn int) string {
+	if startLine > endLine || startLine == endLine && startColumn > endColumn {
+		startLine, startColumn, endLine, endColumn = endLine, endColumn, startLine, startColumn
+	}
+	startLine, endLine = max(startLine, 0), min(endLine, len(lines)-1)
+	var b strings.Builder
+	for line := startLine; line <= endLine; line++ {
+		from, to := 0, len(lines[line].Cells)-1
+		if line == startLine {
+			from = startColumn
+		}
+		if line == endLine {
+			to = endColumn
+		}
+		b.WriteString(scrollText(lines[line].Cells, from, to))
+		if line < endLine && !lines[line].Wrapped {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // clampTop keeps the cursor line inside the drawn window, scrolling the
@@ -195,6 +269,16 @@ func (l *Loop) scrollCommand(pane *Pane, what string) {
 		l.scrollBy(pane, page)
 	case "top", "bottom":
 		l.scrollTo(pane, what)
+	case "left":
+		if pane.View.active {
+			pane.View.column = max(pane.View.column-1, 0)
+			l.app.dirty = true
+		}
+	case "right":
+		if pane.View.active {
+			pane.View.column = min(pane.View.column+1, scrollLineWidth(pane, pane.View.cursor)-1)
+			l.app.dirty = true
+		}
 	}
 }
 
@@ -205,10 +289,9 @@ func scrollSuffix(p *Pane) string {
 	if !p.View.active {
 		return ""
 	}
-	behind := max(len(p.Grid.ScrollbackLines())-1-p.View.cursor, 0)
+	behind := max(len(p.Grid.ScrollbackCells())-1-p.View.cursor, 0)
 	if p.View.anchor >= 0 {
-		from, to := p.View.selection()
-		return " [copy " + strconv.Itoa(to-from+1) + " lines]"
+		return " [copy selection]"
 	}
 	return " [copy -" + strconv.Itoa(behind) + "]"
 }

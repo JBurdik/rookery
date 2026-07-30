@@ -156,11 +156,11 @@ func (l *Loop) buildFrame() attachproto.Frame {
 	}
 }
 
-// drawScrollView paints a pane's transcript window in place of its live
-// screen, with the selected lines banded in reverse video.
+// drawScrollView paints a pane's cell scrollback in place of its live screen.
+// Only selected cells are reversed; unselected cells retain their original
+// terminal colours and attributes.
 func (l *Loop) drawScrollView(canvas *termgrid.Canvas, r Rect, pane *Pane) {
-	lines := pane.Grid.ScrollbackLines()
-	from, to := pane.View.selection()
+	lines := pane.Grid.ScrollbackCells()
 
 	base := termgrid.Cell{Char: ' ', FG: termgrid.DefaultFG, BG: termgrid.DefaultBG}
 	canvas.Fill(r.X, r.Y, r.W, r.H, base)
@@ -170,14 +170,18 @@ func (l *Loop) drawScrollView(canvas *termgrid.Canvas, r Rect, pane *Pane) {
 		if idx >= len(lines) {
 			break
 		}
-		style := base
-		if idx >= from && idx <= to {
-			style.Mode |= termgrid.ModeReverse
-			// The band runs the full width, so a short line still reads as
-			// "this whole line is selected" rather than as highlighted text.
-			canvas.Fill(r.X, r.Y+y, r.W, 1, style)
+		for x, cell := range lines[idx].Cells {
+			if x >= r.W {
+				break
+			}
+			if cell.Char == 0 {
+				cell = base
+			}
+			if pane.View.selected(idx, x) {
+				cell.Mode ^= termgrid.ModeReverse
+			}
+			canvas.Set(r.X+x, r.Y+y, cell)
 		}
-		canvas.DrawText(r.X, r.Y+y, truncate(lines[idx], r.W), style)
 	}
 }
 

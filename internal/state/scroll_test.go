@@ -86,8 +86,8 @@ func TestSelectionHoldsThePaneInScrollMode(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("copied %d lines (%q), want 5 (line5..line9)", len(lines), text)
 	}
-	if lines[0] != "line5" || lines[4] != "line9" {
-		t.Errorf("copied %q, want line5..line9", text)
+	if lines[0] != "line5" || lines[4] != "l" {
+		t.Errorf("copied %q, want character selection from line5 through first cell of line9", text)
 	}
 	if p.View.active {
 		t.Error("copying should return the pane to the live screen")
@@ -118,8 +118,8 @@ func TestScrollSuffixReportsDistanceAndSelection(t *testing.T) {
 
 	l.toggleSelect(p)
 	l.scrollBy(p, -1)
-	if got := scrollSuffix(p); got != " [copy 2 lines]" {
-		t.Errorf("suffix = %q, want \" [copy 2 lines]\"", got)
+	if got := scrollSuffix(p); got != " [copy selection]" {
+		t.Errorf("suffix = %q, want \" [copy selection]\"", got)
 	}
 }
 
@@ -148,15 +148,35 @@ func TestDrawScrollViewPaintsTheWindowAndTheSelection(t *testing.T) {
 	if got := row(2); got != "line6" {
 		t.Errorf("bottom row = %q, want line6", got)
 	}
-	// Selected lines are banded, unselected ones are not.
+	// The cell selection starts at column zero and ends at column zero, so
+	// only the first cell of each selected row is reversed.
 	if canvas.At(0, 2).Mode&termgrid.ModeReverse != 0 {
 		t.Error("line6 is outside the selection and should not be banded")
 	}
-	for _, y := range []int{0, 1} {
-		// The band runs past the end of the text, not just under it.
-		if canvas.At(19, y).Mode&termgrid.ModeReverse == 0 {
-			t.Errorf("row %d should be banded to the full width", y)
-		}
+	if canvas.At(0, 0).Mode&termgrid.ModeReverse == 0 || canvas.At(1, 0).Mode&termgrid.ModeReverse == 0 {
+		t.Error("selection should run from its first cell through the end of its first row")
+	}
+	if canvas.At(0, 1).Mode&termgrid.ModeReverse == 0 {
+		t.Error("last selected row should include its endpoint")
+	}
+	if canvas.At(1, 1).Mode&termgrid.ModeReverse != 0 {
+		t.Error("last selected row should stop at its endpoint")
+	}
+}
+
+func TestCopySelectionJoinsSoftWrappedRows(t *testing.T) {
+	grid := termgrid.New(4, 2)
+	grid.Write([]byte("\x1b[31mabcde\x1b[0m\r\nnext\r\n"))
+	pane := &Pane{ID: "w1:p1", Grid: grid, View: scrollView{anchor: -1}}
+	l := &Loop{app: newApp("scroll-test")}
+	l.app.panes[pane.ID] = pane
+	l.enterScroll(pane)
+	l.scrollBy(pane, -2) // retained "abcd" row
+	l.toggleSelect(pane)
+	l.scrollBy(pane, 1)
+	pane.View.column = 0
+	if got := l.copySelection(pane); got != "abcde" {
+		t.Errorf("soft-wrapped selection = %q, want abcde", got)
 	}
 }
 
