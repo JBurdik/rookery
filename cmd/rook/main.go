@@ -73,6 +73,8 @@ func main() {
 		err = cli.RunKill(os.Args[2:])
 	case "ping":
 		err = cli.RunPing(os.Args[2:])
+	case "update":
+		err = cli.RunUpdate(os.Args[2:])
 	case "completion":
 		err = cli.RunCompletion(os.Args[2:])
 	case "version", "--version", "-v":
@@ -108,6 +110,7 @@ Humans:
   rook delete [session]                           permanently delete a stopped session
   rook reload [session]                           reload daemon config and agent manifests
   rook ping [session]                             check daemon liveness
+	  rook update [--check]                          install or check the latest GitHub Release
   rook session ls|attach|status|kill|delete       namespaced aliases for session lifecycle
 
 Agents / scripts — JSON output, see `+"`rook pane help`"+` and `+"`rook wait help`"+`:

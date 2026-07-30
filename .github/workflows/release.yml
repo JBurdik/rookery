@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X github.com/jirkab/rookery/internal/cli.Version=${VERSION}" -o dist/rook ./cmd/rook
+          tar -C dist -czf "dist/rook_${VERSION}_${GOOS}_${GOARCH}.tar.gz" rook
+          rm dist/rook
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rook-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz > checksums.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --generate-notes

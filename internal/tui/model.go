@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"net"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/jirkab/rookery/internal/icons"
 	"github.com/jirkab/rookery/internal/ndjson"
 	"github.com/jirkab/rookery/internal/notify"
+	"github.com/jirkab/rookery/internal/update"
 )
 
 type model struct {
@@ -119,7 +121,28 @@ func newModel(sessionName string, conn net.Conn, cfg config.Config, keys config.
 	}
 }
 
-func (m *model) Init() tea.Cmd { return spinnerTick() }
+func (m *model) Init() tea.Cmd {
+	return tea.Batch(spinnerTick(), checkForUpdate(m.clientVersion))
+}
+
+type updateCheckMsg struct {
+	tag       string
+	available bool
+}
+
+// checkForUpdate stays deliberately quiet on failure: attaching must remain
+// instant and useful when GitHub is unreachable.
+func checkForUpdate(version string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		tag, available, err := update.Check(ctx, nil, version)
+		if err != nil {
+			return updateCheckMsg{}
+		}
+		return updateCheckMsg{tag: tag, available: available}
+	}
+}
 
 // spinnerTickMsg drives the sidebar's animation.
 type spinnerTickMsg struct{}
@@ -133,6 +156,12 @@ func spinnerTick() tea.Cmd {
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case updateCheckMsg:
+		if msg.available && m.statusMsg == "" {
+			m.statusMsg = "rook " + msg.tag + " is available — run `rook update`"
+		}
+		return m, nil
+
 	case copyResultMsg:
 		if msg.err != nil {
 			return m, m.showToast(copyFailedMsg(msg.err))

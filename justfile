@@ -42,3 +42,12 @@ setup: install
     rook integration install claude
     rook skill --install
     rook integration status
+
+# publish a versioned GitHub Release through .github/workflows/release.yml
+# example: just release v0.2.1
+release version:
+    @test -n "{{version}}" || { echo "usage: just release vX.Y.Z"; exit 1; }
+    @echo "{{version}}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "version must look like vX.Y.Z"; exit 1; }
+    git diff --quiet && git diff --cached --quiet || { echo "commit or stash changes before releasing"; exit 1; }
+    git tag -a "{{version}}" -m "Release {{version}}"
+    git push origin "{{version}}"

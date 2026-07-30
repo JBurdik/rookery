@@ -45,6 +45,20 @@ rook                            # open the default session
 Use `ctrl+b` then `?` in the TUI for the key map. The sections below explain
 the design decisions and every command in detail.
 
+### Updates
+
+Release builds check GitHub in the background when Rook attaches. When a newer
+release is available, the TUI tells you to run:
+
+```bash
+rook update
+```
+
+The update downloads the matching GitHub Release archive and verifies its
+SHA-256 checksum before replacing the executable. It never interrupts active
+agents: restart a daemon yourself with `rook kill` and reattach when ready.
+Use `rook update --check` in scripts or before upgrading.
+
 ## Contents
 
 - [Remote attach](#remote-attach)
@@ -735,6 +749,7 @@ the drop is counted rather than hidden.
 | `rook status [session]` | compact session and agent-status summary |
 | `rook reload [session]` | reload daemon sound settings and agent manifests |
 | `rook ping` / `rook kill [session]` / `rook delete [session]` | liveness check / stop / permanently remove a stopped session |
+| `rook update [--check]` | check GitHub Releases, or install the latest verified release binary |
 
 ### The layout survives a restart
 

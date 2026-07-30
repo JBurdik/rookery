@@ -10,7 +10,7 @@ _rook() {
     'pane:manage panes' 'wait:wait for a pane event' 'fan:fan work out to agents'
     'watch:stream agent status events' 'git:open a git UI pane' 'agents:manage agent manifests'
     'integration:manage agent hooks' 'report:report agent status' 'skill:install agent skill'
-    'setup:run setup wizard' 'api:call an API method' 'kill:stop a session' 'ping:check liveness'
+    'setup:run setup wizard' 'api:call an API method' 'kill:stop a session' 'ping:check liveness' 'update:install or check updates'
     'completion:print shell completion script' 'version:print version' 'help:show help'
   )
   pane_commands=(ls list new create split resume send run send-text send-keys read status focus inspect neighbor move rename zoom current kill close help)
@@ -100,6 +100,9 @@ _rook() {
       ;;
     report)
       _arguments '--session=[session name]:session:' '--status=[agent status]:status:(idle working blocked)' '--session-ref=[agent session id]:session:' '--session-ref-stdin=[JSON field]:field:' '--agent=[agent id]:agent:' '--quiet[never fail or print]'
+      ;;
+    update)
+      _arguments '--check[only check for an update]'
       ;;
     skill)
       _arguments '--install[install the rook skill]'

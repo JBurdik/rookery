@@ -10,7 +10,7 @@ _rook()
     command="${COMP_WORDS[1]}"
     subcommand="${COMP_WORDS[2]}"
 
-    local root_commands="serve attach ls status reload delete rm session pane workspace ws tab api wait report integration skill setup fan watch git agents kill ping completion help version"
+    local root_commands="serve attach ls status reload delete rm session pane workspace ws tab api wait report integration skill setup fan watch git agents kill ping update completion help version"
     local common_flags="--session"
 
     if (( COMP_CWORD == 1 )); then
@@ -90,6 +90,8 @@ _rook()
             COMPREPLY=( $(compgen -W "$common_flags --status --session-ref --session-ref-stdin --agent --quiet --help" -- "$cur") ) ;;
         skill)
             COMPREPLY=( $(compgen -W "--install --help" -- "$cur") ) ;;
+        update)
+            COMPREPLY=( $(compgen -W "--check --help" -- "$cur") ) ;;
         ls|status|reload|delete|rm|kill|ping|git|api|setup)
             COMPREPLY=( $(compgen -W "$common_flags --help" -- "$cur") ) ;;
     esac
