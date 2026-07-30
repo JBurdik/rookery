@@ -6,9 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jirkab/rookery/stargazers"><img alt="GitHub stars" src="https://shieldcn.dev/github/stars/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
-  <a href="https://github.com/jirkab/rookery/commits/main"><img alt="Last commit" src="https://shieldcn.dev/github/last-commit/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
-  <a href="https://github.com/jirkab/rookery/issues"><img alt="Open issues" src="https://shieldcn.dev/github/issues/jirkab/rookery.svg?variant=secondary&theme=violet" /></a>
+  <a href="https://github.com/JBurdik/multiplexer/stargazers"><img alt="GitHub stars" src="https://shieldcn.dev/github/stars/JBurdik/multiplexer.svg?variant=secondary&theme=violet" /></a>
+  <a href="https://github.com/JBurdik/multiplexer/commits/main"><img alt="Last commit" src="https://shieldcn.dev/github/last-commit/JBurdik/multiplexer.svg?variant=secondary&theme=violet" /></a>
+  <a href="https://github.com/JBurdik/multiplexer/issues"><img alt="Open issues" src="https://shieldcn.dev/github/issues/JBurdik/multiplexer.svg?variant=secondary&theme=violet" /></a>
 </p>
 
 <p align="center"><strong>One durable home for the agents doing the work.</strong></p>
@@ -27,6 +27,14 @@ agent-aware status and attention cues, safe queued input, remote SSH attach,
 and worktree-backed fan-out — all without exposing a network socket.
 
 ## Start here
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JBurdik/multiplexer/main/install.sh | sh
+rook setup                     # connect your coding agent
+rook                            # open the default session
+```
+
+Or, from a local clone:
 
 ```bash
 just install                   # install rook and restart a stale daemon
