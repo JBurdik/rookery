@@ -37,12 +37,18 @@ type App struct {
 
 	panes map[string]*Pane
 
-	// viewport is the size of the drawing area, as reported by the most
-	// recently resized client.
+	// viewport is the size of the shared *layout* area: the per-axis minimum
+	// over every attached client's terminal (recomputeViewport). It is kept
+	// as the last known value while nobody is attached.
 	//
-	// ponytail: one viewport for all clients, last writer wins. Per-client
-	// viewports mean per-client layouts and per-client frames, which is a
-	// substantially larger daemon. Noted in future-plan.md.
+	// Each client is still sent a frame rendered at its own size — see
+	// buildFrame/flushFrame — so a bigger client is not clipped, it just gets
+	// blank space around the layout. The layout itself has to be one size
+	// because there is one PTY per pane and a PTY has one size: rendering the
+	// same pane at two different widths would mean two emulators over one
+	// process, and any program doing its own line wrapping would be wrong in
+	// at least one of them. Smallest-client-wins is tmux's policy for the
+	// same reason.
 	viewCols, viewRows int
 
 	// dirty marks chrome-level changes (focus, layout, agent status) that

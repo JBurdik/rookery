@@ -203,6 +203,8 @@ func (l *Loop) Run() {
 			if c, ok := l.app.clients[m.clientID]; ok {
 				delete(l.app.clients, m.clientID)
 				close(c.send)
+				// The smallest client leaving lets the layout grow back.
+				l.recomputeViewport()
 			}
 		case m := <-l.attachIn:
 			l.handleAttachInput(m)
@@ -317,7 +319,7 @@ func (l *Loop) handleAttachConnect(m attachConnectMsg) {
 	l.app.clients[m.clientID] = &attachClientConn{
 		id: m.clientID, send: m.send, cols: m.cols, rows: m.rows, focused: true,
 	}
-	l.setViewport(m.cols, m.rows)
+	l.recomputeViewport()
 	// Adopt the client's glyph theme so the pane headers the daemon draws
 	// match the sidebar the client draws.
 	if m.theme.Icons != "" {
@@ -340,7 +342,7 @@ func (l *Loop) handleAttachConnect(m attachConnectMsg) {
 	send(m.send, attachproto.HelloAck{Type: attachproto.TypeHelloAck, Session: l.app.Session, Version: l.version})
 	send(m.send, l.buildState())
 	if len(l.app.panes) > 0 {
-		send(m.send, l.buildFrame())
+		send(m.send, l.buildFrame(m.cols, m.rows))
 	}
 }
 
@@ -363,7 +365,29 @@ func (l *Loop) handleAttachResize(m attachResizeMsg) {
 		return
 	}
 	c.cols, c.rows = m.cols, m.rows
-	l.setViewport(m.cols, m.rows)
+	l.recomputeViewport()
+	// Even when the shared area did not move, this client's own frame did.
+	l.app.dirty = true
+}
+
+// recomputeViewport sets the shared layout area to the per-axis minimum over
+// the attached clients, so every pane rectangle fits on every screen. The
+// last known size is kept when nobody is attached: a detached session should
+// not jump to a default size and make every program in it redraw.
+func (l *Loop) recomputeViewport() {
+	cols, rows := 0, 0
+	for _, c := range l.app.clients {
+		if c.cols <= 0 || c.rows <= 0 {
+			continue
+		}
+		if cols == 0 || c.cols < cols {
+			cols = c.cols
+		}
+		if rows == 0 || c.rows < rows {
+			rows = c.rows
+		}
+	}
+	l.setViewport(cols, rows)
 }
 
 func (l *Loop) setViewport(cols, rows int) {
@@ -845,8 +869,17 @@ func (l *Loop) flushFrame() {
 		l.broadcastControl(attachproto.Frame{Type: attachproto.TypeFrame})
 		return
 	}
-	frame := l.buildFrame()
+	// One frame per distinct client size, not per client: two clients on the
+	// same size terminal (the common case) still cost one render.
+	type size struct{ cols, rows int }
+	frames := map[size]attachproto.Frame{}
 	for _, c := range l.app.clients {
+		k := size{c.cols, c.rows}
+		frame, built := frames[k]
+		if !built {
+			frame = l.buildFrame(c.cols, c.rows)
+			frames[k] = frame
+		}
 		sendDroppable(c.send, frame)
 	}
 }

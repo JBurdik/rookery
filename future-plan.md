@@ -45,7 +45,8 @@ present here, and in places ours goes further:
 
 ## Open questions to revisit later
 
-- Multi-client differing terminal sizes (v1: last attacher's viewport wins — needs a real per-client viewport story if this becomes annoying).
+- ~~Multi-client differing terminal sizes~~ Done (2026-07-30): per-client
+  frames, smallest-client-wins layout. See "Per-client viewports" below.
 - Whether `internal/termgrid`'s `x/vt` dependency needs replacing once it stabilizes or if Bubble Tea v2 changes the calculus.
 
 ## Deferred out of the splits/status/wait round (2026-07-27)
@@ -55,9 +56,7 @@ present here, and in places ours goes further:
   This is the biggest remaining gap against Herdr.
 - **Mouse** — click to focus, drag a divider to resize.
 - **Layout persistence** across a daemon restart.
-- **Per-client viewports** — the daemon renders one composite frame at the last
-  attacher's size, so two clients with different terminal sizes share the
-  smaller experience.
+- ~~**Per-client viewports**~~ Done (2026-07-30) — see the round note below.
 - **ANSI-aware truncation in the client** — frame lines are used at whatever
   width the daemon rendered them; a resize can flicker for exactly one frame.
 - **Agent status rules as data** — `internal/agentstatus` holds them in a Go
@@ -78,9 +77,7 @@ persistence and the goto picker have since landed — see the round below):
   resize keys.~~ Done: `prefix+shift+hjkl`/shift+arrows swap the focused pane
   with its neighbor; `prefix s` enters a resize mode where hjkl/arrows nudge
   the divider repeatedly until Esc/Enter.
-- **Per-client viewports** — one composite frame is rendered at the last
-  attacher's size, so two clients with different terminal sizes share the
-  smaller one.
+- ~~**Per-client viewports**~~ Done (2026-07-30) — see the round note below.
 - **Plugins and a mobile client.**
 
 ## Deferred out of the scroll/copy/goto/persistence round (2026-07-27)
@@ -154,3 +151,42 @@ wrappers. The built-ins use both: `generic.json`'s `confirm_prompt`,
 `visible_blocker`, and `generic.json` gained a `pager_viewer` rule
 (`after_last_horizontal_rule`, `skip_state_update`) for a pager's `(END)`
 footer paging through an agent's own output.
+
+## Per-client viewports (2026-07-30) — done
+
+Each attached client now keeps its own dimensions (`attachClientConn.cols/rows`,
+already there) and is sent a frame rendered **at its own size**:
+`buildFrame(cols, rows)` composites onto a canvas of the client's size, and
+`flushFrame` builds one frame per *distinct* client size (two clients on the
+same size still cost one render). The connect handshake sends that client's
+first frame at its own size too. Nothing is last-resizer-wins any more.
+
+The **layout** is still one size for all clients: the per-axis minimum over
+every attached client (`recomputeViewport`, recomputed on connect, resize and
+disconnect; the last known size is kept while nobody is attached, so detaching
+does not make every program redraw). A client bigger than that minimum gets
+the layout plus blank padding rather than a clipped frame; a client that just
+shrank has its frame clipped by its own canvas instead of overflowing.
+
+### The unavoidable single-PTY size policy
+
+A pane is one process on one PTY, and a PTY has exactly one `TIOCSWINSZ`. Two
+clients cannot be served two *widths* of the same pane: it would need two
+emulators over one byte stream, and any program doing its own wrapping,
+absolute cursor addressing, or full-screen redraw would be wrong in at least
+one of them. So the pane grid and the PTY are sized from the shared minimum —
+tmux's policy, for the same reason. The concrete consequence: a 200-column
+client attached alongside an 80-column one sees its panes 80 columns wide with
+blanks to the right, not 200 columns of content. Herdr behaves the same.
+
+Rejected alternatives, for the record: sizing PTYs to the *largest* client
+(the smaller client would then be clipped mid-line with no way to scroll
+horizontally), and per-client emulators (a second `termgrid.Grid` per pane per
+distinct size, fed the same bytes — doubles the emulation cost and still
+cannot fix a program that queried the terminal size once at startup).
+
+Tests: `internal/state/viewport_test.go` covers the minimum being per-axis, it
+growing back when the small client detaches, it surviving a full detach, each
+client getting a frame at its own dimensions, the big client being padded
+rather than clipped, and pane/PTY sizes being independent of which client a
+frame was rendered for.
