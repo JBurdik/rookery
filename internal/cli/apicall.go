@@ -15,7 +15,7 @@ import (
 
 // Version is reported by ping and shown in `rook ls`. Release builds replace
 // it with the Git tag through -ldflags.
-var Version = "0.2.0"
+var Version = "0.2.3"
 
 // SessionEnvVar is exported into every pane's environment by the daemon, so
 // an agent running inside a pane targets its own session by default instead

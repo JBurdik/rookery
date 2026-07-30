@@ -92,6 +92,10 @@ type model struct {
 	spinning bool
 
 	statusMsg string
+	// updateAvailable is deliberately separate from transient status text: an
+	// available release remains actionable until the user updates, even while
+	// copy confirmations, prompts, and agent notifications come and go.
+	updateAvailable string
 	// toast is a short-lived, bottom-row announcement. It deliberately stays
 	// separate from statusMsg so a copy confirmation never erases a useful
 	// daemon warning underneath it.
@@ -157,8 +161,8 @@ func spinnerTick() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case updateCheckMsg:
-		if msg.available && m.statusMsg == "" {
-			m.statusMsg = "rook " + msg.tag + " is available — run `rook update`"
+		if msg.available {
+			m.updateAvailable = msg.tag
 		}
 		return m, nil
 
@@ -807,6 +811,9 @@ func (m *model) View() string {
 }
 
 func (m *model) renderStatus() string {
+	if m.updateAvailable != "" {
+		return m.p.updateAlert.Render(clampPad("  UPDATE AVAILABLE  ·  rook "+m.updateAvailable+"  ·  run rook update", m.width))
+	}
 	if m.toast != "" {
 		return m.p.help.Render(m.toast)
 	}
