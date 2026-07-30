@@ -55,6 +55,7 @@ type palette struct {
 	help        lipgloss.Style
 	errorStyle  lipgloss.Style
 	alert       lipgloss.Style
+	updateAlert lipgloss.Style
 
 	// status maps an agent status to its colour, in sidebar and tab flavours.
 	status    map[string]lipgloss.Style
@@ -99,6 +100,9 @@ func newPalette(c config.Colors) palette {
 		help:        lipgloss.NewStyle().Foreground(col(c.Muted)),
 		errorStyle:  lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
 		alert:       lipgloss.NewStyle().Foreground(col(c.Blocked)).Bold(true),
+		// An update is actionable but not an error. Reuse the unread-badge
+		// contrast for a full-width, persistent status banner.
+		updateAlert: lipgloss.NewStyle().Foreground(col(c.BadgeFG)).Background(col(c.BadgeBG)).Bold(true),
 	}
 	p.status = map[string]lipgloss.Style{
 		"working": bg.Foreground(col(c.Working)),

@@ -44,3 +44,15 @@ func TestOlderToastTimerCannotClearNewToast(t *testing.T) {
 		t.Errorf("toast = %q after stale timer, want second", m.toast)
 	}
 }
+
+func TestUpdateNoticePersistsOverTransientStatus(t *testing.T) {
+	m := testModel()
+	m.width = 80
+	m.Update(updateCheckMsg{tag: "v0.2.3", available: true})
+	m.statusMsg = "prefix — ctrl+b ? for help"
+	m.showToast("copied 2 lines to the clipboard")
+
+	if got := m.renderStatus(); !strings.Contains(got, "UPDATE AVAILABLE") || !strings.Contains(got, "rook v0.2.3") {
+		t.Errorf("status = %q, want persistent update notice", got)
+	}
+}
