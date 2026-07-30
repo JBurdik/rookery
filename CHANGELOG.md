@@ -22,6 +22,16 @@
   scripts for the supported interactive shells.
 - xterm-style input encoding now covers modified navigation/editing keys and
   F1–F12, including Alt variants.
+- Styled cell-history, character-level keyboard selection, and style-preserving
+  copy mode for terminal scrollback.
+- Per-client attach frames with a shared minimum-viewport PTY policy, replacing
+  the prior last-resizer-wins behavior.
+- Safe agent-session resume for Claude, Codex, and OpenCode via `rook pane
+  resume`, using persisted integration metadata.
+- Configurable default fan-out agent command and arguments under `agent` in
+  `config.json`.
+- Bracketed paste, Kitty keyboard, and xterm modifyOtherKeys compatibility in
+  the TUI input bridge.
 - First-run setup can now configure Claude Code, Codex CLI, and OpenCode
   integrations.
 
